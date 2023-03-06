@@ -1,2 +1,6 @@
-# canvi
-SBI FAVI CP
+
+# CANVI
+
+## License
+
+Described the `LICENSE` file.
