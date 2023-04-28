@@ -275,7 +275,7 @@ if __name__ == "__main__":
     encoder.to(device)
     optimizer = torch.optim.Adam(encoder.parameters(), lr=1e-3)
 
-    cached_fn = f"{task}.nf"
+    cached_fn = f"{args.task}.nf"
 
     if os.path.exists(cached_fn):
         with open(cached_fn, "rb") as f:
