@@ -23,6 +23,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 def generate_data(n_pts, return_theta=False):
     theta = prior(num_samples=n_pts)
     x = simulator(theta)
@@ -113,11 +117,32 @@ if __name__ == "__main__":
         encoder = pickle.load(f)
     encoder.to(device)
 
-    # plot sample posterior
-    # test_theta, test_x = generate_data(10, return_theta=True)
-    # if test_theta.shape[-1] == 2:
-    #     plot(j=8, x=test_x, theta=test_theta, encoder=encoder, device=device)
+    # visualize posterior
+    output_dir = f"results/{args.task}"
+    os.makedirs(output_dir, exist_ok=True)
 
+    print("Plotting posteriors...")
+    observation_idx = 1
+    observation = task.get_observation(num_observation=observation_idx)
+    reference_samples_all = task.get_reference_posterior_samples(num_observation=observation_idx)
+    reference_samples = reference_samples_all[np.random.choice(len(reference_samples_all), 1_000, replace=False)]
+    posterior_samples_all = encoder.sample(50_000, observation[0].view(1,-1).to(device)).cpu().detach()[0]
+    posterior_samples = posterior_samples_all[np.random.choice(len(posterior_samples_all), 1_000, replace=False)]
+
+    plt.rcParams['text.usetex'] = True
+    columns = [f"$\\theta_{i}$" for i in range(posterior_samples.shape[-1])]
+    ref_df = pd.DataFrame(columns=columns, data=reference_samples)
+    ref_df["label"] = "$\\mathrm{exact}$"
+    posterior_df = pd.DataFrame(columns=columns, data=posterior_samples)
+    posterior_df["label"] = "$\\mathrm{approximation}$"
+    df = pd.concat([ref_df, posterior_df])
+
+    plt.title("$\\mathrm{Reference vs. Approximate Posteriors}$")
+    sns.set_theme()
+    sns.pairplot(df, hue="label", kind="kde", corner=True)
+    plt.tight_layout()
+    plt.savefig(f"results/{args.task}/posterior.png")
+    
     # perform calibration
     print("Calibrating...")
     calibration_theta, calibration_x = generate_data(10_000, return_theta=True)
@@ -132,9 +157,12 @@ if __name__ == "__main__":
     print("Assessing coverage...")
     conformal_coverages, variational_coverages, desired_coverages = assess_coverage()
 
-    plt.plot(desired_coverages, conformal_coverages, label="Conformalized")
-    plt.plot(desired_coverages, variational_coverages, label="Variational")
-    plt.plot(desired_coverages, desired_coverages, label="Desired")
+    plt.clf()
+    plt.plot(desired_coverages, conformal_coverages, label="$\\mathrm{Conformalized}$")
+    plt.plot(desired_coverages, variational_coverages, label="$\\mathrm{Variational}$")
+    plt.plot(desired_coverages, desired_coverages, label="$\\mathrm{Desired}$")
     plt.legend()
-    plt.title("Conformal vs. Variational Coverage")
-    plt.savefig(f"results/{args.task}.png")
+    plt.title("$\\mathrm{Conformal vs. Variational Coverage}$")
+    
+    plt.tight_layout()
+    plt.savefig(f"results/{args.task}/coverage.png")
