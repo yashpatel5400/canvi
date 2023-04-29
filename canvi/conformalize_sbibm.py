@@ -157,7 +157,7 @@ if __name__ == "__main__":
     print("Assessing coverage...")
     conformal_coverages, variational_coverages, desired_coverages = assess_coverage()
 
-    plt.clf()
+    plt.close()
     plt.plot(desired_coverages, conformal_coverages, label="$\\mathrm{Conformalized}$")
     plt.plot(desired_coverages, variational_coverages, label="$\\mathrm{Variational}$")
     plt.plot(desired_coverages, desired_coverages, label="$\\mathrm{Desired}$")
