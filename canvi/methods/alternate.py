@@ -12,21 +12,23 @@ import pandas as pd
 import time
 
 import sbibm
-from sbi.inference import BNRE, SNRE_A, SNRE_B, SNRE_C
-from sbi.inference import SNPE_C
-from sbi.inference import MNLE, SNLE_A
+from sbi.inference import SNRE, SNLE, SNPE, BNRE
 
 plt.rcParams['text.usetex'] = True
 
-# rounds is for refinement (if using sequential alg; if not, set = 0)
-def assess_coverage(task, amortized_posterior, fn, rounds = 0, device = "cpu", coverage_trials = 25, num_coverage_pts = 20):
+# rounds is for refinement (if using sequential alg; if not, set = 0) -- inference must be passed in if doing sequential
+def assess_coverage(task, amortized_posterior, fn, requires_mcmc, rounds = 0, inference = None, device = "cpu", coverage_trials = 1_000, num_coverage_pts = 20):
     calibration_prior = task.get_prior()
     calibration_simulator = task.get_simulator()
 
     variational_coverages = np.zeros(num_coverage_pts)
     desired_coverages = [(1 / num_coverage_pts) * k for k in range(num_coverage_pts)]
     
-    sample_sizes = [1024 * 2 ** j for j in range(8)]
+    # non-amortized methods (that require MCMC) are sooo slow: can only manageably run these very small sample sizes
+    if requires_mcmc:
+        sample_sizes = [32 * 2 ** j for j in range(5)]
+    else:
+        sample_sizes = [1024 * 2 ** j for j in range(8)]
     variational_coverages_per_size = [np.zeros(num_coverage_pts) for _ in sample_sizes]
     times = [[] for _ in sample_sizes]
 
@@ -34,16 +36,24 @@ def assess_coverage(task, amortized_posterior, fn, rounds = 0, device = "cpu", c
         test_theta = calibration_prior(num_samples=1)
         test_x = calibration_simulator(test_theta)
 
-        posterior = copy.deepcopy(amortized_posterior)
+        posterior = copy.deepcopy(amortized_posterior).set_default_x(test_x[0])
 
         training_time_start = time.time()
         proposal = posterior
-        inference = SNLE_A(task.get_prior_dist())
         for _ in range(rounds):
-            num_sims = 100
+            if requires_mcmc:
+                sample_sizes = 32
+            else:
+                sample_sizes = 1024
             theta = proposal.sample((num_sims,))
             x = calibration_simulator(theta)
-            _ = inference.append_simulations(theta, x, proposal=proposal).train()
+            # In `SNLE` and `SNRE`, you should not pass the `proposal` to `.append_simulations()`
+            if isinstance(inference, SNLE) or isinstance(inference, SNRE):
+                _ = inference.append_simulations(theta, x).train()
+            elif isinstance(inference, BNRE):
+                _ = inference.append_simulations(theta, x).train(regularization_strength=100.)
+            else: 
+                _ = inference.append_simulations(theta, x, proposal=proposal).train() 
             posterior = inference.build_posterior().set_default_x(test_x[0])
             proposal = posterior
         training_time = time.time() - training_time_start
@@ -65,7 +75,7 @@ def assess_coverage(task, amortized_posterior, fn, rounds = 0, device = "cpu", c
             
             calibration_time = time.time() - calibration_time_start
             times[i].append(training_time + calibration_time)
-    
+        print(f"Completed trial: {j}")
     plt.close()
     
     dfs = []
@@ -108,36 +118,39 @@ if __name__ == "__main__":
     parser.add_argument("--rounds", type=int, default=0)
     args = parser.parse_args()
 
-    alg_name = "SNPE_A"
     task = sbibm.get_task(args.task)
+    prior = task.get_prior_dist()
+    simulator = task.get_simulator()
+    inference = eval(args.alg)(prior)    
     
-    fn = f"{args.task}_{args.alg}"
+    fn = f"{args.task}_{args.alg}_rounds={args.rounds}"
     cache_fn = f"{fn}.pkl"
 
     if os.path.exists(cache_fn):
         with open(cache_fn, "rb") as f:
             posterior = pickle.load(f)
     else:
-        prior = task.get_prior_dist()
-        simulator = task.get_simulator()
-        observation = task.get_observation(num_observation=1)
-
         rounds = 1
-        num_sims = 100
+        num_sims = 10_000
 
-        inference = eval(args.alg)(prior)
         proposal = prior
-        for _ in range(1):
-            theta = proposal.sample((num_sims,))
-            x = simulator(theta)
+        theta = proposal.sample((num_sims,))
+        x = simulator(theta)
+        # In `SNLE` and `SNRE`, you should not pass the `proposal` to `.append_simulations()`
+        if isinstance(inference, SNLE) or isinstance(inference, SNRE):
             _ = inference.append_simulations(theta, x).train()
-            posterior = inference.build_posterior().set_default_x(observation)
-            proposal = posterior
+        elif isinstance(inference, BNRE):
+            _ = inference.append_simulations(theta, x).train(regularization_strength=100.)
+        else: 
+            _ = inference.append_simulations(theta, x, proposal=proposal).train() 
 
+        posterior = inference.build_posterior()
+        
         with open(cache_fn, "wb") as f:
             pickle.dump(posterior, f)
 
-    assess_coverage(task, posterior, fn, rounds=args.rounds)
+    requires_mcmc = type(inference) in [SNRE, SNLE, BNRE] # only SNPE does not require MCMC
+    assess_coverage(task, posterior, fn, requires_mcmc, rounds=args.rounds, inference=inference)
 
     observation = task.get_observation(num_observation=1)
     posterior.set_default_x(observation)
