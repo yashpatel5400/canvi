@@ -5,6 +5,7 @@ import random
 import socket
 import sys
 import time
+import pickle
 
 import hydra
 import numpy as np
@@ -23,6 +24,41 @@ from sbibm.utils.io import (
 
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+def assess_coverage(task, posterior, device = "cuda", coverage_trials = 25, num_coverage_pts = 20):
+    calibration_prior = task.get_prior()
+    calibration_simulator = task.get_simulator()
+
+    variational_coverages = np.zeros(num_coverage_pts)
+    desired_coverages = [(1 / num_coverage_pts) * k for k in range(num_coverage_pts)]
+    
+    for j in range(coverage_trials):
+        test_theta = calibration_prior(num_samples=1)
+        test_x = calibration_simulator(test_theta)
+
+        posterior.flow.set_default_x(test_x[0])
+
+        predicted_lps = posterior.log_prob(test_theta[0].view(1,-1).to(device)).detach()
+        predicted_prob = predicted_lps.cpu().exp().numpy()
+        
+        empirical_theta_dist = posterior.sample([50_000])
+        predicted_lps = posterior.log_prob(empirical_theta_dist[0]).detach()
+        unnorm_probabilities = predicted_lps.cpu().exp().numpy()
+
+        var_quantiles = np.zeros(len(desired_coverages))
+        for k, desired_coverage in enumerate(desired_coverages):
+            var_quantiles[k] = np.quantile(unnorm_probabilities, q = 1 - desired_coverage, method="inverted_cdf")
+        variational_coverages += predicted_prob > var_quantiles
+    variational_coverages /= coverage_trials
+
+    plt.close()
+    plt.plot(desired_coverages, variational_coverages, label="$\\mathrm{Variational}$")
+    plt.plot(desired_coverages, desired_coverages, label="$\\mathrm{Desired}$")
+    plt.legend()
+    plt.title("$\\mathrm{Conformal vs. Variational Coverage}$")
+    
+    plt.tight_layout()
+    plt.savefig(f"coverage.png")
 
 @hydra.main(config_path="config", config_name="config")
 def main(cfg: DictConfig) -> None:
@@ -50,12 +86,11 @@ def main(cfg: DictConfig) -> None:
         )
 
     # Paths
-    os.makedirs(cfg.task.name, exist_ok=True)
-    path_samples = f"{cfg.task.name}/posterior_samples.csv.bz2"
-    path_runtime = f"{cfg.task.name}/runtime.csv"
-    path_log_prob_true_parameters = f"{cfg.task.name}/log_prob_true_parameters.csv"
-    path_num_simulations_simulator = f"{cfg.task.name}/num_simulations_simulator.csv"
-    path_predictive_samples = f"{cfg.task.name}/predictive_samples.csv.bz2"
+    path_samples = "posterior_samples.csv.bz2"
+    path_runtime = "runtime.csv"
+    path_log_prob_true_parameters = "log_prob_true_parameters.csv"
+    path_num_simulations_simulator = "num_simulations_simulator.csv"
+    path_predictive_samples = "predictive_samples.csv.bz2"
 
     # Run
     task = sbibm.get_task(cfg.task.name)
@@ -80,18 +115,21 @@ def main(cfg: DictConfig) -> None:
         samples = outputs
         num_simulations_simulator = float("nan")
         log_prob_true_parameters = float("nan")
-    elif type(outputs) == tuple and len(outputs) == 3:
+    elif type(outputs) == tuple:
         samples = outputs[0]
         num_simulations_simulator = float(outputs[1])
         log_prob_true_parameters = (
             float(outputs[2]) if outputs[2] is not None else float("nan")
         )
+        posterior = outputs[3]
     else:
         raise NotImplementedError
     save_tensor_to_csv(path_samples, samples, columns=task.get_labels_parameters())
     save_float_to_csv(path_runtime, runtime)
     save_float_to_csv(path_num_simulations_simulator, num_simulations_simulator)
     save_float_to_csv(path_log_prob_true_parameters, log_prob_true_parameters)
+
+    assess_coverage(task, posterior)
 
     # Predictive samples
     log.info("Draw posterior predictive samples")
@@ -123,7 +161,7 @@ def main(cfg: DictConfig) -> None:
             path_log_prob_true_parameters=path_log_prob_true_parameters,
             log=log,
         )
-        df_metrics.to_csv("metrics.csv", index=False)
+        df_metrics.to_csv(f"{cfg.task.name}-{cfg.algorithm['name']}.csv", index=False)
         log.info(f"Metrics:\n{df_metrics.transpose().to_string(header=False)}")
 
 
