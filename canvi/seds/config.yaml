@@ -1,0 +1,45 @@
+defaults:
+  - override hydra/launcher: joblib
+
+hydra:
+  launcher:
+    n_jobs: 20
+
+seed: 789243
+dir: '/home/declan/current/canvi/canvi/seds'
+
+data:
+  min_mag: 10
+  max_mag: 11
+  jitter: 1e-5
+  n_pts: 100
+  noise: 1e-1
+  scale: 1e-37
+  smooth: False
+  smooth_parameter: 5.
+  dream_batches: 1000
+  multiplicative_noise: 1e-1
+
+training:
+  use_from_pickle: True
+  device: 'cuda:0'
+  epochs: 25000
+  lr: 1e-4
+  grad_clip: 1
+  mb_size: 16
+  loss: 'elbo'
+
+encoder:
+  type: 'flow'
+
+smc:
+  K: 1000
+  index: 0
+  only: False
+
+plots:
+  n_samples: 10000
+  flow:
+    points: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+  flow_and_mcmc:
+    points: [4,5,10,11]
