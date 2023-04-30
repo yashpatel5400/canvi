@@ -28,12 +28,12 @@ for task_name in task_name:
         session = server.sessions[-1]
         p = session.attached_pane
         p.send_keys("conda activate chig", enter=True)
-        cmd = f"python alternate.py --task two_moons --alg {alg} --rounds 0"
+        cmd = f"python alternate.py --task {task_name} --alg {alg} --rounds 0"
         p.send_keys(cmd, enter=True)
         print(f"Launched: {cmd}")
 
         # for any algorithm with sequential variant, also launch corresponding job
         if alg.startswith("S"):
-            cmd = f"python alternate.py --task two_moons --alg {alg} --rounds 5"
+            cmd = f"python alternate.py --task {task_name} --alg {alg} --rounds 5"
             p.send_keys(cmd, enter=True)
             print(f"Launched: {cmd}")
