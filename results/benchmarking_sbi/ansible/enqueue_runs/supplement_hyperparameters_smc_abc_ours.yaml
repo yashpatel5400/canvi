@@ -1,0 +1,52 @@
+---
+- hosts: localhost
+
+  vars:
+    sbibm: "python ../../run.py --multirun "
+
+    task_names:
+      - bernoulli_glm
+      - bernoulli_glm_raw
+      - gaussian_linear
+      - gaussian_linear_uniform
+      - gaussian_mixture
+      - sir
+      - two_moons
+      - slcp
+      - slcp_distractors
+      - lotka_volterra
+    task_obs: "{{ range(1,11)|list }}"
+    task_sims: "task.num_simulations=1000,10000,100000"
+
+    task_names_obs: "task={{ task_names|join(',') }} task.num_observation={{ task_obs|join(',') }}"
+    tasks_1k: "{{task_names_obs}} task.num_simulations=1000"
+    tasks_10k: "{{task_names_obs}} task.num_simulations=10000"
+    tasks_100k: "{{task_names_obd}} task.num_simulations=100000"
+
+    tasks_all: "task={{ task_names|join(',') }} task.num_observation={{ task_obs|join(',') }} {{ task_sims }}"
+
+    rq: "hydra/launcher=rq hydra/output=server hydra.sweep.dir='${env:HOME}/results/supplement_hyperparameters_smc_abc_ours'"
+    rq_lowest: "{{rq}} hydra.launcher.queue=lowest"
+    rq_low: "{{rq}} hydra.launcher.queue=low"
+    rq_medium: "{{rq}} hydra.launcher.queue=medium"
+    rq_high: "{{rq}} hydra.launcher.queue=high"
+    rq_highest: "{{rq}} hydra.launcher.queue=highest"
+    rq_default: "{{rq}} hydra.launcher.queue=default"
+
+  tasks:
+
+   - name: Launch algorithms
+     block:
+        - shell: |
+            which python
+          register: which_python
+        - debug: var=which_python.stdout_lines
+        - shell: |
+            # 1800 runs 
+            {{sbibm}} algorithm={{item}} algorithm.run=sbi.smcabc.run algorithm.params.population_size=100,1000 algorithm.params.epsilon_decay=0.2,0.5,0.8 algorithm.params.kernel_variance_scale=0.5,2.0 algorithm.params.kde_bandwidth=null,kde {{tasks_all}} {{rq_low}}
+          with_items:
+            - smc-abc
+          async: 7200
+          poll: 5
+          register: shell_out
+        - debug: var=shell_out.stdout_lines

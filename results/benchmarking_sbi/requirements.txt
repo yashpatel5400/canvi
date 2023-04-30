@@ -1,0 +1,9 @@
+ansible
+boto
+hiplot
+hydra-core>=1.1.1
+hydra-joblib-launcher>=1.1.0
+hydra-rq-launcher>=1.0.1
+jupyter
+sbibm==1.0.7
+supervisor

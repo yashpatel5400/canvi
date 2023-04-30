@@ -1,0 +1,58 @@
+---
+- name: sbibm environment
+  block:
+    - name: Clone/update sbibm repo
+      git:
+        repo: git@github.com:sbi-benchmark/sbibm.git
+        dest: "{{ sbibm_repo_path }}"
+        version: "{{ sbibm_version }}"
+        accept_hostkey: yes
+    - name: Environment variables
+      blockinfile:
+        path: "{{ ansible_env.HOME }}/.profile"
+        state: present
+        create: yes
+        block: |
+          # sbibm
+          export JULIA_SYSIMAGE_DIFFEQTORCH="$HOME/.julia_sysimage_diffeqtorch.so"
+        marker: '# {mark} ANSIBLE MANAGED BLOCK sbibm.sbibm_env'
+    - name: Install sbibm
+      shell: |
+        . ~/.profile
+        conda create -n {{ sbibm_environment }} python={{ sbibm_python_version }} -y
+        conda activate {{ sbibm_environment }}
+        pip install -e ".[dev]"
+      args:
+        executable: /bin/bash
+        chdir: "{{ sbibm_repo_path }}"
+      async: 1800
+      poll: 5
+      register: shell_out_sbibm
+    - debug: var=shell_out_sbibm.stdout_lines
+    - name: Install sbibm
+      shell: |
+        . ~/.profile
+        conda create -n {{ sbibm_environment }} python={{ sbibm_python_version }} -y
+        conda activate {{ sbibm_environment }}
+      args:
+        executable: /bin/bash
+        chdir: "{{ sbibm_repo_path }}"
+      async: 1800
+      poll: 5
+      register: shell_out_install
+    - debug: var=shell_out_install.stdout_lines
+    - name: Install sbibm/diffeqtorch
+      shell: |
+        . ~/.profile
+        conda create -n {{ sbibm_environment }} python={{ sbibm_python_version }} -y
+        conda activate {{ sbibm_environment }}
+        python -c "from diffeqtorch.install import install_and_test; install_and_test()"
+      args:
+        executable: /bin/bash
+        chdir: "{{ sbibm_repo_path }}"
+      async: 3600
+      poll: 5
+      register: shell_out_diffeqtorch
+    - debug: var=shell_out_diffeqtorch.stdout_lines
+  tags:
+  - sbibm

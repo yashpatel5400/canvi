@@ -1,0 +1,49 @@
+---
+- name: AWS EFS
+  block:
+    - name: Searching all EFS instances with tag Name set to value of efs_name_tag
+      community.aws.efs_info:
+        tags:
+          Name: "{{ aws_efs_name_tag }}"
+      register: efs_search_result
+      delegate_to: localhost
+    - name: Store EFS facts
+      set_fact:
+        efs: "{{ efs_search_result.efs[0] }}"
+    - debug: msg="{{ efs }}"
+      delegate_to: localhost
+    - name: Ensure NFS is installed
+      package:
+        name:
+          - nfs-common
+          #- autofs
+          - rpcbind
+        state:
+          present
+      become: yes
+    - name: Ensure rpcbind service is running
+      service: name=rpcbind state=started enabled=yes
+      become: yes
+    - name: Create mount point
+      file: path='{{ aws_efs_path }}' state=directory owner='{{ aws_efs_owner }}' group='{{ aws_efs_group }}'
+      become: yes
+    - name: Get current AZ from AWS
+      uri:
+        url: http://169.254.169.254/latest/meta-data/placement/availability-zone
+        return_content: yes
+      register: aws_current_az
+    - name: Ensure EFS volume is mounted
+      mount:
+        name: "{{ aws_efs_path }}"
+        src: "{{ aws_current_az.content }}.{{ efs.file_system_id }}.efs.{{ aws_efs_region }}.amazonaws.com:/"
+        fstype: nfs4
+        opts: nfsvers=4.1
+        state: mounted
+      become: yes
+    - name: Ensure permissions
+      file:
+        path: '{{ aws_efs_path }}'
+        owner: '{{ aws_efs_owner }}'
+        group: '{{ aws_efs_group }}'
+        mode: '{{ aws_efs_permissions }}'
+      become: yes

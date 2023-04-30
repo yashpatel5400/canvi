@@ -1,0 +1,20 @@
+---
+- name: SSH keys
+  block:
+    - name: Create .ssh directory if it does not exist
+      file:
+        path: ~/.ssh
+        state: directory
+        mode: '0755'
+    - name: Copy id_rsa from host
+      copy:
+        src: "{{ ssh_keys_id_rsa }}"
+        dest: ~/.ssh/id_rsa
+        mode: 0400
+        force: False
+    - name: Copy id_rsa.pub from host
+      copy:
+        src: "{{ ssh_keys_id_rsa_pub }}"
+        dest: ~/.ssh/id_rsa.pub
+        mode: 0400
+        force: False

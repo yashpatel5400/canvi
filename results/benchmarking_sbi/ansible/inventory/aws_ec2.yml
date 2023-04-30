@@ -1,0 +1,21 @@
+#
+# Dynamic inventory
+#
+# ansible-inventory --graph -i aws_ec2.yml
+#
+
+plugin: aws_ec2
+
+regions:
+  - us-east-1
+
+keyed_groups:
+  - key: tags.name
+    prefix: aws_ec2_
+    separator: ""
+  - key: tags.Name
+    prefix: aws_ec2_
+    separator: ""
+
+compose:
+  ansible_user: "'ubuntu'"

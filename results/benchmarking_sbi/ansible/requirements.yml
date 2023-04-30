@@ -1,0 +1,16 @@
+---
+collections:
+- community.aws
+
+roles:
+  - name: miniconda
+    src: https://github.com/jan-matthis/ansible_miniconda
+    version: master
+
+  - name: julia
+    src: https://github.com/jan-matthis/ansible_julia
+    version: master
+
+  - name: redis
+    src: https://github.com/geerlingguy/ansible-role-redis
+    version: master

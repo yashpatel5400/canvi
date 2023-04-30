@@ -1,0 +1,16 @@
+---
+- name: Check if swap file exists
+  stat:
+    path: /var/swapfile
+  register: swap_file_check
+
+- command: echo {{ swap_file_check }}
+
+- name: Format swap device
+  shell: |
+    sudo dd if=/dev/zero of=/var/swapfile bs="{{ swap_size_bs }}" count="{{ swap_size_count }}"
+    sudo chmod 600 /var/swapfile
+    sudo mkswap /var/swapfile
+    echo /var/swapfile none swap defaults 0 0 | sudo tee -a /etc/fstab
+    sudo swapon -a
+  when: not swap_file_check.stat.exists

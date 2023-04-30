@@ -1,0 +1,15 @@
+# Project specific
+outputs/
+multirun/
+runs/
+sbi-logs/
+tensorboard/
+notebooks/
+figures/
+.hydra/
+run.log
+df.csv
+df_raw.csv
+extra_prior.csv
+extra_posterior.csv
+geckodriver.log

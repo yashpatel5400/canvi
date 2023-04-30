@@ -1,0 +1,5 @@
+---
+redis_host: "{{ lookup('env', 'REDIS_HOST') | default('0.0.0.0', true) }}"
+redis_password: "{{ lookup('env', 'REDIS_PASSWORD') | default('', true) }}"
+redis_port: "{{ lookup('env', 'REDIS_PORT') | default('6379', true) }}"
+redis_db: "{{ lookup('env', 'REDIS_DB') | default('0', true) }}"

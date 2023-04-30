@@ -1,0 +1,5 @@
+---
+sbibm_environment: "sbibm"
+sbibm_repo_path: "{{ansible_env.HOME}}/sbibm"
+sbibm_version: "main"
+sbibm_python_version: "3.8.5"

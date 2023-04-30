@@ -1,0 +1,4 @@
+---
+- name: Miniconda install
+  include_role:
+    name: miniconda

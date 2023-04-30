@@ -1,0 +1,20 @@
+- name: Redis
+  become: yes
+  block:
+    - name: Update package cache
+      apt:
+        update_cache: yes
+    - name: Remove apt lock file  # https://github.com/ansible/ansible/issues/51663
+      file:
+        state: absent
+        path: "/var/lib/dpkg/lock"
+    - name: Install and launch redis server
+      include_role:
+        name: redis
+      vars:
+        redis_bind_interface: 0.0.0.0
+        redis_requirepass: "{{ redis_password }}"
+    - name: Restart redis server
+      service:
+        name: redis
+        state: restarted
