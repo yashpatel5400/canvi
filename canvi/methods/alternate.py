@@ -80,6 +80,7 @@ def assess_coverage(task, amortized_posterior, fn, rounds = 0, device = "cpu", c
 
     sns.set_theme()
     sns.lineplot(data=df, x="confidence", y="coverages", hue="sample_sizes", palette="flare", legend="full")
+    sns.lineplot(data=df, x="coverages", y="coverages", c="black", linestyle='--')
         
     plt.xlabel("$\\mathrm{Confidence Level}$")
     plt.ylabel("$\\mathrm{Empirical Coverage}$")
