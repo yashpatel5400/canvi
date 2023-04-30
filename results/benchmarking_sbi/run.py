@@ -21,6 +21,8 @@ from sbibm.utils.io import (
     save_tensor_to_csv,
 )
 
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 @hydra.main(config_path="config", config_name="config")
 def main(cfg: DictConfig) -> None:
@@ -138,6 +140,26 @@ def save_config(cfg: DictConfig, filename: str = "run.yaml") -> None:
         )
 
 
+def plot_posterior_reference(reference_samples_all, posterior_samples_all):
+    print("Plotting posteriors...")
+    reference_samples = reference_samples_all[np.random.choice(len(reference_samples_all), 1_000, replace=False)].cpu()
+    posterior_samples = posterior_samples_all[np.random.choice(len(posterior_samples_all), 1_000, replace=False)].cpu()
+
+    plt.rcParams['text.usetex'] = True
+    columns = [f"$\\theta_{i}$" for i in range(posterior_samples.shape[-1])]
+    ref_df = pd.DataFrame(columns=columns, data=reference_samples)
+    ref_df["label"] = "$\\mathrm{exact}$"
+    posterior_df = pd.DataFrame(columns=columns, data=posterior_samples)
+    posterior_df["label"] = "$\\mathrm{approximation}$"
+    df = pd.concat([ref_df, posterior_df])
+
+    plt.title("$\\mathrm{Reference vs. Approximate Posteriors}$")
+    sns.set_theme()
+    sns.pairplot(df, hue="label", kind="kde", corner=True)
+    plt.tight_layout()
+    plt.savefig(f"posterior.png")
+
+
 def compute_metrics_df(
     task_name: str,
     num_observation: int,
@@ -173,6 +195,8 @@ def compute_metrics_df(
     algorithm_posterior_samples = get_tensor_from_csv(path_samples)[
         : task.num_posterior_samples, :
     ]
+    plot_posterior_reference(reference_posterior_samples, algorithm_posterior_samples)
+    
     assert reference_posterior_samples.shape[0] == task.num_posterior_samples
     assert algorithm_posterior_samples.shape[0] == task.num_posterior_samples
     log.info(
