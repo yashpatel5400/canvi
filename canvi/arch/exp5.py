@@ -47,8 +47,8 @@ from setup import setup
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
-    initialize(config_path=".", job_name="test_app")
-    cfg = compose(config_name="config")
+    # initialize(config_path=".", job_name="test_app")
+    # cfg = compose(config_name="config")
     seed = cfg.seed
     torch.manual_seed(seed)
     random.seed(seed)
@@ -68,7 +68,7 @@ def main(cfg : DictConfig) -> None:
     loss_fcn,
     kwargs) = setup(cfg)
 
-    for j in range(100000):
+    for j in range(kwargs['epochs']):
         optimizer.zero_grad()
         loss = loss_fcn()
         print('Loss iter {} is {}'.format(j, loss))
@@ -81,7 +81,7 @@ def main(cfg : DictConfig) -> None:
         del loss
 
 
-    torch.save(encoder.state_dict(), '..weights/{}.pth'.format(logger_string))
+    torch.save(encoder.state_dict(), './weights/{}.pth'.format(logger_string))
 
 if __name__ == "__main__":
     main() 
