@@ -41,8 +41,8 @@ from setup import setup
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
-    initialize(config_path=".", job_name="test_app")
-    cfg = compose(config_name="config")
+    # initialize(config_path=".", job_name="test_app")
+    # cfg = compose(config_name="config")
     seed = cfg.seed
     torch.manual_seed(seed)
     random.seed(seed)
@@ -80,7 +80,7 @@ def main(cfg : DictConfig) -> None:
         loss.backward()
         optimizer.step()
 
-    torch.save(encoder.state_dict(), './exp3/weights/weights_diff_{}'.format(logger_string))
+    torch.save(encoder.state_dict(), './weights/weights_{}'.format(logger_string))
 
 if __name__ == "__main__":
     main()
