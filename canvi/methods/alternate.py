@@ -17,7 +17,7 @@ from sbi.inference import SNRE, SNLE, SNPE, BNRE
 plt.rcParams['text.usetex'] = True
 
 # rounds is for refinement (if using sequential alg; if not, set = 0) -- inference must be passed in if doing sequential
-def assess_coverage(task, amortized_posterior, fn, requires_mcmc, rounds = 0, inference = None, device = "cpu", coverage_trials = 2, num_coverage_pts = 20):
+def assess_coverage(task, amortized_posterior, fn, requires_mcmc, rounds = 0, inference = None, device = "cpu", coverage_trials = 1_000, num_coverage_pts = 20):
     calibration_prior = task.get_prior()
     calibration_simulator = task.get_simulator()
 
@@ -157,7 +157,7 @@ if __name__ == "__main__":
             posterior = pickle.load(f)
     else:
         rounds = 1
-        train_sims = 10_000
+        train_sims = 5_000
 
         proposal = prior
         theta = proposal.sample((train_sims,))

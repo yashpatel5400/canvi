@@ -33,7 +33,7 @@ for task_name in task_name:
         print(f"Launched: {cmd}")
 
         # for any algorithm with sequential variant, also launch corresponding job
-        if alg.startswith("S"):
-            cmd = f"python alternate.py --task {task_name} --alg {alg} --rounds 5"
-            p.send_keys(cmd, enter=True)
-            print(f"Launched: {cmd}")
+        # if alg.startswith("S"):
+        #     cmd = f"python alternate.py --task {task_name} --alg {alg} --rounds 5"
+        #     p.send_keys(cmd, enter=True)
+        #     print(f"Launched: {cmd}")
