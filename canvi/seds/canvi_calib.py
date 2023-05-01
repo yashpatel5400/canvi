@@ -38,70 +38,26 @@ from operator import add
 from utils import prior_t_sample, resample, transform_thetas
 import torch.distributions as D
 
-def assess_calibration(thetas, x, logger_string, mdn=True, flow=False, n_samples=10000, alphas=.05, **kwargs):
-    assert not (mdn and flow), "One of mdn or flow flags must be false."
-    encoder = kwargs['encoder']
-    device = kwargs['device']
-
-    results = torch.zeros(alphas.shape[0], thetas.shape[1]).to(device)
-    for j in range(x.shape[0]):
-        true_param = thetas[j]
-        observation = x[j]
-        # Sample from encoder
-        if mdn:
-            log_pi, mu, sigma = encoder(x[j].to(device))
-            mix = D.Categorical(logits=log_pi.view(-1))
-            comp = D.Independent(D.Normal(mu.squeeze(0), sigma.squeeze(0)), 1)
-            mixture = D.MixtureSameFamily(mix, comp)
-            particles = mixture.sample((n_samples,)).clamp(-1., 1.)
-        elif flow:
-            particles = encoder.sample(num_samples=n_samples, context=observation.view(1,-1).to(device))
-        particles = particles.reshape(n_samples, -1)
-
-        for j in range(alphas.shape[0]):
-            alpha = alphas[j]
-            q = torch.tensor([alpha/2, 1-alpha/2]).to(device)
-            quantiles = torch.quantile(particles, q, dim=0)
-            success = ((true_param > quantiles[0]) & (true_param < quantiles[1])).long()
-            results[j] += success
-
-    return results/x.shape[0]
-
 def assess_calibration_canvi(cal_scores, thetas, x, logger_string, n_samples=10000, alphas=.05, **kwargs):
     encoder = kwargs['encoder']
     device = kwargs['device']
 
-    results = torch.zeros(alphas.shape[0], thetas.shape[1])
-    hey = [0., 0., 0., 0.]
-    for j in range(x.shape[0]):
-        true_param = thetas[j]
-        observation = x[j]
+    results = torch.zeros(alphas.shape[0])
+
+    for kk in range(alphas.shape[0]):
+        alpha = alphas[kk]
+        q = torch.tensor([1-alpha])
+        quantiles = torch.quantile(cal_scores, q, dim=0)
+
         # Sample from encoder
-        particles = prior_t_sample(100000, **kwargs)
-        lps = encoder.log_prob(particles.to(device), x[j].view(1,-1).repeat(particles.shape[0],1).to(device)).detach()
-        lps = lps.exp().cpu()
-        scores = 1/lps
+        lps = encoder.log_prob(thetas.to(device), x.to(device)).detach()
+        probs = lps.exp().cpu()
+        scores = 1/probs
 
-        # particles = encoder.sample(num_samples=n_samples, context=observation.view(1,-1).to(device))
-        # particles = particles.reshape(n_samples, -1)
+        success = (scores <= quantiles[0]).long().sum()
+        results[kk] = success/x.shape[0]
 
-        for kk in range(alphas.shape[0]):
-            alpha = alphas[kk]
-            q = torch.tensor([1-alpha])
-            quantiles = torch.quantile(cal_scores, q, dim=0)
-            hpr = scores < quantiles[0]
-            samples_keep = particles[hpr]
-            mins = torch.min(samples_keep, dim=0)[0]
-            maxs = torch.max(samples_keep, dim=0)[0]
-            
-
-            success = ((true_param.cpu() > mins) & (true_param.cpu() < maxs)).all()
-            if success:
-                hey[kk] += 1.
-
-            #results[j] += success
-
-    return results/x.shape[0]
+    return results
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
@@ -131,19 +87,27 @@ def main(cfg : DictConfig) -> None:
         kwargs
     ) = setup(cfg)
 
-    # Calibration scores
-    calibration_theta, calibration_x = generate_data_emulator(10_000, return_theta=True, **kwargs)
-    cal_scores = []
-    for calibration_theta_pt, calibration_x_pt in zip(calibration_theta, calibration_x):
-        log_prob = encoder.log_prob(calibration_theta_pt.view(1,-1).to(device), calibration_x_pt.view(1,-1).to(device)).detach()
-        prob = log_prob.cpu().exp().numpy()
-        cal_scores.append(1 / prob)
-    cal_scores = np.array(cal_scores)
-    cal_scores = torch.tensor(cal_scores).reshape(-1)
-
     kwargs.pop('encoder')
     kwargs.pop('loss')
 
+    # # Load enocder 
+    # loss = 'elbo'
+    # logger_string = '{},{},{},{},noise={},mult={},smooth={}'.format(loss, 'flow', cfg.plots.lr, kwargs['K'], kwargs['noise'], kwargs['multiplicative_noise'], kwargs['smooth'])
+    # encoder.load_state_dict(torch.load('weights/weights_{}'.format(logger_string)))
+    # encoder.eval()
+    # kwargs['encoder'] = encoder
+
+    # # Calibration scores
+    # calibration_theta, calibration_x = generate_data_emulator(10000, return_theta=True, **kwargs)
+    # lps = encoder.log_prob(calibration_theta.to(device), calibration_x.to(device)).detach()
+    # probs = lps.cpu().exp().numpy()
+    # cal_scores = 1/probs
+    # cal_scores = torch.tensor(cal_scores).reshape(-1)
+
+    # test_theta, test_x = generate_data_emulator(1000, return_theta=True, **kwargs)
+
+    # assess_calibration_canvi(cal_scores, test_theta, test_x, logger_string, 10000, alphas=torch.tensor([0.05]), **kwargs)
+    
     mapper = {
     'elbo': 'ELBO',
     'iwbo': 'IWBO',
@@ -163,12 +127,18 @@ def main(cfg : DictConfig) -> None:
         encoder.eval()
         kwargs['encoder'] = encoder
 
+        # Calibration scores
+        calibration_theta, calibration_x = generate_data_emulator(100000, return_theta=True, **kwargs)
+        lps = encoder.log_prob(calibration_theta.to(device), calibration_x.to(device)).detach()
+        probs = lps.cpu().exp().numpy()
+        cal_scores = 1/probs
+        cal_scores = torch.tensor(cal_scores).reshape(-1)
+
         for j in range(10):
             print('Trial number {}'.format(j))
-
             try:
-                test_theta, test_x = generate_data_emulator(cfg.plots.n_test_points, return_theta=True, **kwargs)
-                assessment = assess_calibration(test_theta, test_x, logger_string, mdn, flow, alphas=alphas, **kwargs)
+                test_theta, test_x = generate_data_emulator(1000, return_theta=True, **kwargs)
+                assessment = assess_calibration_canvi(cal_scores, test_theta, test_x, logger_string, alphas=alphas, **kwargs)
                 calib_results[str(loss)].append(assessment)
             except:
                 continue
@@ -177,32 +147,23 @@ def main(cfg : DictConfig) -> None:
     stds = {}
 
     for key, value in calib_results.items():
-        means[key] = torch.mean(torch.stack(value), 0).cpu()
-        stds[key] = torch.std(torch.stack(value), 0).cpu()
+        means[key] = torch.mean(torch.stack(value), 0).cpu().numpy()
+        stds[key] = torch.std(torch.stack(value), 0).cpu().numpy()
 
-    param1 = {}
-    param2 = {}
+    final = {}
     for key, value in means.items():
-        param1[key] = ['{0:.4f}'.format(num) for num in list(value[:,0].numpy())]
-        param2[key] = ['{0:.4f}'.format(num) for num in list(value[:,1].numpy())]
+        final[key] = ['{0:.4f}'.format(num) for num in list(value)]
 
     for key, value in stds.items():
-        std_strs_1 = [' ({0:.4f})'.format(num) for num in list(value[:,0].numpy())]
-        std_strs_2 = [' ({0:.4f})'.format(num) for num in list(value[:,1].numpy())]
-        param1[key] = map(add, param1[key], std_strs_1)
-        param2[key] = map(add, param2[key], std_strs_2)
+        std_strs = [' ({0:.4f})'.format(num) for num in list(value)]
+        final[key] = map(add, final[key], std_strs)
 
-    results1 = pd.DataFrame(param1)
-    results2 = pd.DataFrame(param2)
-    results1 = results1.set_axis(alphas.detach().numpy(), axis='index')
-    results2 = results2.set_axis(alphas.detach().numpy(), axis='index')
-    results1.rename(mapper=mapper, inplace=True, axis=1)
-    results2.rename(mapper=mapper, inplace=True, axis=1)
+    final = pd.DataFrame(final)
+    final = final.set_axis(alphas.detach().numpy(), axis='index')
+    final.rename(mapper=mapper, inplace=True, axis=1)
 
-    with open('./figs/lr={},K={},theta1.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
-        tf.write(results1.to_latex())
-    with open('./figs/lr={},K={},theta2.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
-        tf.write(results2.to_latex())
+    with open('./figs/lr={},K={},all_canvi.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
+        tf.write(final.to_latex())
 
 if __name__ == "__main__":
     main()

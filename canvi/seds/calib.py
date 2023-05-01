@@ -102,7 +102,7 @@ def main(cfg : DictConfig) -> None:
     mapper = {
     'elbo': 'ELBO',
     'iwbo': 'IWBO',
-    'favi': 'favi',
+    'favi': 'FAVI',
     }
 
     names = list(map(lambda name: mapper[name], cfg.plots.losses))
@@ -132,32 +132,105 @@ def main(cfg : DictConfig) -> None:
     stds = {}
 
     for key, value in calib_results.items():
-        means[key] = torch.mean(torch.stack(value), 0)
-        stds[key] = torch.std(torch.stack(value), 0)
+        means[key] = torch.mean(torch.stack(value), 0).cpu()
+        stds[key] = torch.std(torch.stack(value), 0).cpu()
 
     param1 = {}
     param2 = {}
+    param3 = {}
+    param4 = {}
+    param5 = {}
+    param6 = {}
+    param7 = {}
+    param8 = {}
+    param9 = {}
+    param10 = {}
     for key, value in means.items():
         param1[key] = ['{0:.4f}'.format(num) for num in list(value[:,0].numpy())]
         param2[key] = ['{0:.4f}'.format(num) for num in list(value[:,1].numpy())]
+        param3[key] = ['{0:.4f}'.format(num) for num in list(value[:,2].numpy())]
+        param4[key] = ['{0:.4f}'.format(num) for num in list(value[:,3].numpy())]
+        param5[key] = ['{0:.4f}'.format(num) for num in list(value[:,4].numpy())]
+        param6[key] = ['{0:.4f}'.format(num) for num in list(value[:,5].numpy())]
+        param7[key] = ['{0:.4f}'.format(num) for num in list(value[:,6].numpy())]
+        param8[key] = ['{0:.4f}'.format(num) for num in list(value[:,7].numpy())]
+        param9[key] = ['{0:.4f}'.format(num) for num in list(value[:,8].numpy())]
+        param10[key] = ['{0:.4f}'.format(num) for num in list(value[:,9].numpy())]
 
     for key, value in stds.items():
         std_strs_1 = [' ({0:.4f})'.format(num) for num in list(value[:,0].numpy())]
         std_strs_2 = [' ({0:.4f})'.format(num) for num in list(value[:,1].numpy())]
+        std_strs_3 = [' ({0:.4f})'.format(num) for num in list(value[:,2].numpy())]
+        std_strs_4 = [' ({0:.4f})'.format(num) for num in list(value[:,3].numpy())]
+        std_strs_5 = [' ({0:.4f})'.format(num) for num in list(value[:,4].numpy())]
+        std_strs_6 = [' ({0:.4f})'.format(num) for num in list(value[:,5].numpy())]
+        std_strs_7 = [' ({0:.4f})'.format(num) for num in list(value[:,6].numpy())]
+        std_strs_8 = [' ({0:.4f})'.format(num) for num in list(value[:,7].numpy())]
+        std_strs_9 = [' ({0:.4f})'.format(num) for num in list(value[:,8].numpy())]
+        std_strs_10 = [' ({0:.4f})'.format(num) for num in list(value[:,9].numpy())]
         param1[key] = map(add, param1[key], std_strs_1)
         param2[key] = map(add, param2[key], std_strs_2)
+        param3[key] = map(add, param3[key], std_strs_3)
+        param4[key] = map(add, param4[key], std_strs_4)
+        param5[key] = map(add, param5[key], std_strs_5)
+        param6[key] = map(add, param6[key], std_strs_6)
+        param7[key] = map(add, param7[key], std_strs_7)
+        param8[key] = map(add, param8[key], std_strs_8)
+        param9[key] = map(add, param9[key], std_strs_9)
+        param10[key] = map(add, param10[key], std_strs_10)
 
     results1 = pd.DataFrame(param1)
     results2 = pd.DataFrame(param2)
+    results3 = pd.DataFrame(param3)
+    results4 = pd.DataFrame(param4)
+    results5 = pd.DataFrame(param5)
+    results6 = pd.DataFrame(param6)
+    results7 = pd.DataFrame(param7)
+    results8 = pd.DataFrame(param8)
+    results9 = pd.DataFrame(param9)
+    results10 = pd.DataFrame(param10)
     results1 = results1.set_axis(alphas.detach().numpy(), axis='index')
     results2 = results2.set_axis(alphas.detach().numpy(), axis='index')
+    results3 = results3.set_axis(alphas.detach().numpy(), axis='index')
+    results4 = results4.set_axis(alphas.detach().numpy(), axis='index')
+    results5 = results5.set_axis(alphas.detach().numpy(), axis='index')
+    results6 = results6.set_axis(alphas.detach().numpy(), axis='index')
+    results7 = results7.set_axis(alphas.detach().numpy(), axis='index')
+    results8 = results8.set_axis(alphas.detach().numpy(), axis='index')
+    results9 = results9.set_axis(alphas.detach().numpy(), axis='index')
+    results10 = results10.set_axis(alphas.detach().numpy(), axis='index')
     results1.rename(mapper=mapper, inplace=True, axis=1)
     results2.rename(mapper=mapper, inplace=True, axis=1)
+    results3.rename(mapper=mapper, inplace=True, axis=1)
+    results4.rename(mapper=mapper, inplace=True, axis=1)
+    results5.rename(mapper=mapper, inplace=True, axis=1)
+    results6.rename(mapper=mapper, inplace=True, axis=1)
+    results7.rename(mapper=mapper, inplace=True, axis=1)
+    results8.rename(mapper=mapper, inplace=True, axis=1)
+    results9.rename(mapper=mapper, inplace=True, axis=1)
+    results10.rename(mapper=mapper, inplace=True, axis=1)
 
     with open('./figs/lr={},K={},theta1.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
         tf.write(results1.to_latex())
     with open('./figs/lr={},K={},theta2.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
         tf.write(results2.to_latex())
+    with open('./figs/lr={},K={},theta3.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
+        tf.write(results3.to_latex())
+    with open('./figs/lr={},K={},theta4.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
+        tf.write(results4.to_latex())
+    with open('./figs/lr={},K={},theta5.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
+        tf.write(results5.to_latex())
+    with open('./figs/lr={},K={},theta6.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
+        tf.write(results6.to_latex())
+    with open('./figs/lr={},K={},theta7.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
+        tf.write(results7.to_latex())
+    with open('./figs/lr={},K={},theta8.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
+        tf.write(results8.to_latex())
+    with open('./figs/lr={},K={},theta9.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
+        tf.write(results9.to_latex())
+    with open('./figs/lr={},K={},theta10.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
+        tf.write(results10.to_latex())
+
 
 if __name__ == "__main__":
     main()
