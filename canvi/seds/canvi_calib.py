@@ -67,6 +67,42 @@ def assess_calibration(thetas, x, logger_string, mdn=True, flow=False, n_samples
 
     return results/x.shape[0]
 
+def assess_calibration_canvi(cal_scores, thetas, x, logger_string, n_samples=10000, alphas=.05, **kwargs):
+    encoder = kwargs['encoder']
+    device = kwargs['device']
+
+    results = torch.zeros(alphas.shape[0], thetas.shape[1])
+    hey = [0., 0., 0., 0.]
+    for j in range(x.shape[0]):
+        true_param = thetas[j]
+        observation = x[j]
+        # Sample from encoder
+        particles = prior_t_sample(100000, **kwargs)
+        lps = encoder.log_prob(particles.to(device), x[j].view(1,-1).repeat(particles.shape[0],1).to(device)).detach()
+        lps = lps.exp().cpu()
+        scores = 1/lps
+
+        # particles = encoder.sample(num_samples=n_samples, context=observation.view(1,-1).to(device))
+        # particles = particles.reshape(n_samples, -1)
+
+        for kk in range(alphas.shape[0]):
+            alpha = alphas[kk]
+            q = torch.tensor([1-alpha])
+            quantiles = torch.quantile(cal_scores, q, dim=0)
+            hpr = scores < quantiles[0]
+            samples_keep = particles[hpr]
+            mins = torch.min(samples_keep, dim=0)[0]
+            maxs = torch.max(samples_keep, dim=0)[0]
+            
+
+            success = ((true_param.cpu() > mins) & (true_param.cpu() < maxs)).all()
+            if success:
+                hey[kk] += 1.
+
+            #results[j] += success
+
+    return results/x.shape[0]
+
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
     initialize(config_path=".", job_name="test_app")
@@ -95,14 +131,23 @@ def main(cfg : DictConfig) -> None:
         kwargs
     ) = setup(cfg)
 
-    test_theta, test_x = generate_data_emulator(cfg.plots.n_test_points, return_theta=True, **kwargs)
+    # Calibration scores
+    calibration_theta, calibration_x = generate_data_emulator(10_000, return_theta=True, **kwargs)
+    cal_scores = []
+    for calibration_theta_pt, calibration_x_pt in zip(calibration_theta, calibration_x):
+        log_prob = encoder.log_prob(calibration_theta_pt.view(1,-1).to(device), calibration_x_pt.view(1,-1).to(device)).detach()
+        prob = log_prob.cpu().exp().numpy()
+        cal_scores.append(1 / prob)
+    cal_scores = np.array(cal_scores)
+    cal_scores = torch.tensor(cal_scores).reshape(-1)
+
     kwargs.pop('encoder')
     kwargs.pop('loss')
 
     mapper = {
     'elbo': 'ELBO',
     'iwbo': 'IWBO',
-    'favi': 'favi',
+    'favi': 'FAVI',
     }
 
     names = list(map(lambda name: mapper[name], cfg.plots.losses))
@@ -132,8 +177,8 @@ def main(cfg : DictConfig) -> None:
     stds = {}
 
     for key, value in calib_results.items():
-        means[key] = torch.mean(torch.stack(value), 0)
-        stds[key] = torch.std(torch.stack(value), 0)
+        means[key] = torch.mean(torch.stack(value), 0).cpu()
+        stds[key] = torch.std(torch.stack(value), 0).cpu()
 
     param1 = {}
     param2 = {}

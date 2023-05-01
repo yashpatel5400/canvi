@@ -73,7 +73,10 @@ def main(cfg : DictConfig) -> None:
             print("On iteration {}".format(j))
 
         optimizer.zero_grad()
-        loss = loss_fcn()
+        try:
+            loss = loss_fcn()
+        except:
+            continue
         print('Loss iter {} is {}'.format(j, loss))
         if torch.isnan(loss).any():
             continue
