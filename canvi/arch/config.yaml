@@ -32,7 +32,7 @@ smc:
 
 plots:
   index: 0
-  losses: ['smcwake', 'wake', 'prior_wake', 'defensive_wake']
+  losses: ['elbo', 'iwbo', 'favi']
   alphas: [.5, .25, .1, .05]
   lr: 1e-4
   n_test_points: 1000

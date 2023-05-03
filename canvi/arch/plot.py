@@ -116,8 +116,8 @@ def plot(index, true_x, encoder, **kwargs):
 
 @hydra.main(version_base=None, config_path="../conf", config_name="config5")
 def main(cfg : DictConfig) -> None:
-    initialize(config_path="../conf", job_name="test_app")
-    cfg = compose(config_name="config5")
+    initialize(config_path=".", job_name="test_app")
+    cfg = compose(config_name="config")
     seed = cfg.seed
     torch.manual_seed(seed)
     random.seed(seed)
@@ -135,10 +135,9 @@ def main(cfg : DictConfig) -> None:
     loss_fcn,
     kwargs) = setup(cfg)
 
-    encoder.load_state_dict(torch.load('./exp5/weights/{}_mdn{}.pth'.format(logger_string, '100000')))
-    encoder.eval()
-    device = kwargs['device']
-
+    # encoder.load_state_dict(torch.load('./weights/{},{}.pth'.format(loss, cfg.plots.lr, kwargs['K']))
+    # encoder.eval()
+    # device = kwargs['device']
 
     # Plotting code
 
@@ -155,8 +154,31 @@ def main(cfg : DictConfig) -> None:
         for j in range(Y.shape[1]):
             Z[i,j] = posterior(X[i,j], Y[i,j], x=data, **kwargs)/normalized
 
+    plt.rcParams.update({'font.size': 22})
     fig, ax = plt.subplots(figsize=(30,15))
     ax.contour(X, Y, Z, levels=10)
+    ax.set_xlabel('$\\theta_1$')
+    ax.set_ylabel('$\\theta_2$')
+    plt.savefig('./figs/theta1={},theta2={}.png'.format(true_theta[index,0].item(), true_theta[index,1].item()))
+
+    index = 244
+    # Exact posterior
+    theta1vals = np.arange(-1., 1., .01)
+    theta2vals = np.arange(0., 1., .01)
+    data = true_x[index].cpu().numpy()
+    X, Y = np.meshgrid(theta1vals, theta2vals)
+    Z = np.empty(X.shape)
+
+    normalized = normalizing_integral(x=data, **kwargs)[0]
+    for i in range(X.shape[0]):
+        for j in range(Y.shape[1]):
+            Z[i,j] = posterior(X[i,j], Y[i,j], x=data, **kwargs)/normalized
+
+    fig, ax = plt.subplots(figsize=(30,15))
+    ax.contour(X, Y, Z, levels=10)
+    ax.set_xlabel('$\\theta_1$')
+    ax.set_ylabel('$\\theta_2$')
+    plt.savefig('./figs/theta1={},theta2={}.png'.format(true_theta[index,0].item(), true_theta[index,1].item()))
 
     # # 2d hist
     # device = kwargs['device']
