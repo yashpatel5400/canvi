@@ -262,7 +262,7 @@ if __name__ == "__main__":
     setup_theta, setup_x = generate_data(prior, simulator, 100, return_theta=True) 
 
     mb_size = 100
-    device = f"cuda:{args.cuda_idx}"
+    device = f"cuda:0"
 
     # EXAMPLE BATCH FOR SHAPES
     z_dim = setup_theta.shape[-1]
@@ -285,7 +285,7 @@ if __name__ == "__main__":
         for j in range(5000):
             theta, x = generate_data(prior, simulator, mb_size, return_theta=True)
             optimizer.zero_grad()
-            loss = -1*encoder.log_prob(theta.to(device), x.to(device)).mean()
+            loss = -1 * encoder.log_prob(theta.to(device), x.to(device)).mean()
             loss.backward()
             optimizer.step()
             print('Iteration {}: loss {}'.format(j, loss.item()))

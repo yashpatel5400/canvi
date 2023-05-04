@@ -27,6 +27,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+plt.rcParams['text.usetex'] = True
+
 def generate_data(n_pts, return_theta=False):
     theta = prior(num_samples=n_pts)
     x = simulator(theta)
@@ -37,69 +39,103 @@ def generate_data(n_pts, return_theta=False):
         return x
 
 # Code to plot the true posterior density
-def plot(j, x, theta, encoder, device):
+def plot(encoders, device, cal_score_per_encoder):
+    theta, x = generate_data(1, return_theta=True)
+    j = 0
+
     # Plot exact density
     nrows = 4
     ncols = 3
     fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=(24,24))
 
-    discretization = .01
-    vals = torch.arange(-1., 1., discretization)
-    eval_pts = torch.cartesian_prod(vals, vals)
-    lps = encoder.log_prob(eval_pts.to(device), x[j].view(1,-1).repeat(eval_pts.shape[0],1).to(device)).detach()
-    X, Y = torch.meshgrid(vals, vals)
-    Z = lps.view(X.shape).cpu().exp().numpy()
+    labels = [
+        "Untrained\ } q_\\varphi(\\cdot) \\mathrm{",
+        "Semi-trained\ } q_\\varphi(\\cdot) \\mathrm{",
+        "Trained\ } q_\\varphi(\\cdot) \\mathrm{",
+    ]
 
-    probabilities = Z.flatten()
-    total_mass = np.sum(probabilities)
-    sorted_indices = np.argsort(probabilities)[::-1]
-    probabilities = probabilities[sorted_indices] / total_mass
-    cdf = np.cumsum(probabilities)
-            
-    ax[0,1].plot(theta[j][0], theta[j][1], marker="x", color="r")
-    ax[0,1].pcolormesh(X.cpu().numpy(), Y.cpu().numpy(), Z)
-    ax[0,1].set_title('Approximate Posterior Flow')
+    for encoder_idx, encoder in enumerate(encoders):
+        discretization = .01
+        vals = torch.arange(-1., 1., discretization)
+        eval_pts = torch.cartesian_prod(vals, vals)
+        lps = encoder.log_prob(eval_pts.to(device), x[j].view(1,-1).repeat(eval_pts.shape[0],1).to(device)).detach()
+        X, Y = torch.meshgrid(vals, vals)
+        Z = lps.view(X.shape).cpu().exp().numpy()
 
-    remaining_spots = nrows * ncols - 2
-    for k in range(remaining_spots):
-        # can either plot the conformalized posterior regions (with the marginal coverage guarantees)
-        coverage_guarantee = 0.05 + 0.1 * k
-        qhat = np.quantile(cal_scores, q = coverage_guarantee)
-        prob_min = 1 / qhat
-        prediction_interval = (Z > prob_min).astype("bool")
+        probabilities = Z.flatten()
+        total_mass = np.sum(probabilities)
+        sorted_indices = np.argsort(probabilities)[::-1]
+        probabilities = probabilities[sorted_indices] / total_mass
+        cdf = np.cumsum(probabilities)
+                
+        sns.set_theme()
+        ax[0,encoder_idx].plot(theta[j][0], theta[j][1], marker="x", color="r")
+        ax[0,encoder_idx].pcolormesh(X.cpu().numpy(), Y.cpu().numpy(), Z)
+        ax[0,encoder_idx].set_title('$\\mathrm{' + labels[encoder_idx] + '}$')
+        ax[0,encoder_idx].set_xticks([])
+        ax[0,encoder_idx].set_yticks([])
 
-        graphic_idx = k + 2
-        row_idx = graphic_idx // ncols
-        col_idx = graphic_idx - row_idx * ncols
+        desired_coverages = [.80, .90, 0.95]
+        for k, desired_coverage in enumerate(desired_coverages):
+            # can either plot the conformalized posterior regions (with the marginal coverage guarantees)
+            qhat = np.quantile(cal_score_per_encoder[encoder_idx], q = desired_coverage)
+            prob_min = 1 / qhat
+            prediction_interval = (Z > prob_min).astype("bool")
 
-        # find corresponding indices of matrix for lookup: have to invert y convention, since down is positive in index
-        ax[row_idx,col_idx].plot(theta[j][0], theta[j][1], marker="x", color="r")
-        ax[row_idx,col_idx].pcolormesh(X.cpu().numpy(), Y.cpu().numpy(), prediction_interval)
-        ax[row_idx,col_idx].set_title(f'Conformalized Posterior: q={coverage_guarantee:.2f}')
+            # find corresponding indices of matrix for lookup: have to invert y convention, since down is positive in index
+            ax[k + 1,encoder_idx].plot(theta[j][0], theta[j][1], marker="x", color="r")
+            ax[k + 1,encoder_idx].pcolormesh(X.cpu().numpy(), Y.cpu().numpy(), prediction_interval)
+            ax[k + 1,encoder_idx].set_title('$\\mathrm{Conformalized\ Posterior:\ q=' + f"{desired_coverage:.2f}" + '}$')
+            ax[k + 1,encoder_idx].set_xticks([])
+            ax[k + 1,encoder_idx].set_yticks([])
+    plt.tight_layout()
+    plt.savefig(f"results/{args.task}/credible_regions.png")
 
-def assess_coverage(coverage_trials = 1000, num_coverage_pts = 20):
+def assess_coverage(encoders, cal_score_per_encoder, coverage_trials = 1_000, num_coverage_pts = 20):
     test_theta, test_x = generate_data(coverage_trials, return_theta=True)
     
-    conformal_coverages = np.zeros(num_coverage_pts)
-    variational_coverages = np.zeros(num_coverage_pts)
-    desired_coverages = [(1 / num_coverage_pts) * k for k in range(num_coverage_pts)]
-    conformal_quantiles = np.array([1 / np.quantile(cal_scores, q = coverage) for coverage in desired_coverages])
+    labels = [
+        "Untrained\ } q_\\varphi(\\cdot) \\mathrm{",
+        "Semi-trained\ } q_\\varphi(\\cdot) \\mathrm{",
+        "Trained\ } q_\\varphi(\\cdot) \\mathrm{",
+    ]
+    colors = [
+        '#64c987',
+        '#089f8f',
+        '#215d6e',
+    ]
+
+    sns.set_theme()
     
-    for j in range(coverage_trials):
-        predicted_lps = encoder.log_prob(test_theta[j].view(1,-1).to(device), test_x[j].view(1,-1).to(device)).detach()
-        predicted_prob = predicted_lps.cpu().exp().numpy()
-        conformal_coverages += predicted_prob > conformal_quantiles
+    for encoder_idx, encoder in enumerate(encoders):
+        conformal_coverages = np.zeros(num_coverage_pts)
+        variational_coverages = np.zeros(num_coverage_pts)
+        desired_coverages = [(1 / num_coverage_pts) * k for k in range(num_coverage_pts)]
+        conformal_coverages = np.zeros(num_coverage_pts)
+        conformal_quantiles = np.array([1 / np.quantile(cal_score_per_encoder[encoder_idx], q = coverage) for coverage in desired_coverages])
+        for j in range(coverage_trials):
+            predicted_lps = encoder.log_prob(test_theta[j].view(1,-1).to(device), test_x[j].view(1,-1).to(device)).detach()
+            predicted_prob = predicted_lps.cpu().exp().numpy()
+            conformal_coverages += predicted_prob > conformal_quantiles
 
-        empirical_theta_dist = encoder.sample(50_000, test_x[j].view(1,-1).to(device))
-        predicted_lps = encoder.log_prob(empirical_theta_dist[0], test_x[j].repeat(empirical_theta_dist[0].shape[0],1).to(device)).detach()
-        unnorm_probabilities = predicted_lps.cpu().exp().numpy()
+            empirical_theta_dist = encoder.sample(50_000, test_x[j].view(1,-1).to(device))
+            predicted_lps = encoder.log_prob(empirical_theta_dist[0], test_x[j].repeat(empirical_theta_dist[0].shape[0],1).to(device)).detach()
+            unnorm_probabilities = predicted_lps.cpu().exp().numpy()
 
-        var_quantiles = np.zeros(len(desired_coverages))
-        for k, desired_coverage in enumerate(desired_coverages):
-            var_quantiles[k] = np.quantile(unnorm_probabilities, q = 1 - desired_coverage, method="inverted_cdf")
-        variational_coverages += predicted_prob > var_quantiles
+            var_quantiles = np.zeros(len(desired_coverages))
+            for k, desired_coverage in enumerate(desired_coverages):
+                var_quantiles[k] = np.quantile(unnorm_probabilities, q = 1 - desired_coverage, method="inverted_cdf")
+            variational_coverages += predicted_prob > var_quantiles
 
-    return conformal_coverages / coverage_trials, variational_coverages / coverage_trials, desired_coverages
+        sns.lineplot(x=desired_coverages, y=variational_coverages / coverage_trials, color=colors[encoder_idx], label="$\\mathrm{" + labels[encoder_idx] + "}$")
+        sns.lineplot(x=desired_coverages, y=conformal_coverages / coverage_trials, color=colors[encoder_idx], linestyle='--')
+    sns.lineplot(x=desired_coverages, y=desired_coverages, c="black", linestyle='--', label="$\\mathrm{Desired}$")
+    
+    plt.legend()
+    plt.title("$\\mathrm{Conformal vs. Variational Coverage}$")
+        
+    plt.tight_layout()
+    plt.savefig(f"results/{args.task}/coverage.png")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -112,10 +148,17 @@ if __name__ == "__main__":
     simulator = task.get_simulator()
 
     device = f"cuda:{args.cuda_idx}"
-    cached_fn = f"sbibm_canvi/{args.task}.nf"
-    with open(cached_fn, "rb") as f:
-        encoder = pickle.load(f)
-    encoder.to(device)
+    # cached_fn = f"sbibm_canvi/{args.task}.nf"
+    encoders = []
+    cached_fns = [
+        # f"untrained_{args.task}.nf",
+        # f"semitrained_{args.task}.nf",
+        f"trained_{args.task}.nf",
+    ]
+    for cached_fn in cached_fns:
+        with open(cached_fn, "rb") as f:
+            encoder = pickle.load(f)
+        encoders.append(encoder.to(device))
 
     # visualize posterior
     output_dir = f"results/{args.task}"
@@ -130,39 +173,49 @@ if __name__ == "__main__":
     posterior_samples = posterior_samples_all[np.random.choice(len(posterior_samples_all), 1_000, replace=False)]
 
     plt.rcParams['text.usetex'] = True
-    columns = [f"$\\theta_{i}$" for i in range(posterior_samples.shape[-1])]
-    ref_df = pd.DataFrame(columns=columns, data=reference_samples)
-    ref_df["label"] = "$\\mathrm{exact}$"
-    posterior_df = pd.DataFrame(columns=columns, data=posterior_samples)
-    posterior_df["label"] = "$\\mathrm{approximation}$"
-    df = pd.concat([ref_df, posterior_df])
+    # columns = [f"$\\theta_{i}$" for i in range(posterior_samples.shape[-1])]
+    # ref_df = pd.DataFrame(columns=columns, data=reference_samples)
+    # ref_df["label"] = "$\\mathrm{exact}$"
+    # posterior_df = pd.DataFrame(columns=columns, data=posterior_samples)
+    # # posterior_df["label"] = "$\\mathrm{approximation}$"
+    # df = pd.concat([ref_df, posterior_df])
 
-    plt.title("$\\mathrm{Reference vs. Approximate Posteriors}$")
-    sns.set_theme()
-    sns.pairplot(df, hue="label", kind="kde", corner=True)
-    plt.tight_layout()
-    plt.savefig(f"results/{args.task}/posterior.png")
+    # plt.title("$\\mathrm{Reference vs. Approximate Posteriors}$")
+    # sns.set_theme()
+    # sns.pairplot(posterior_df, kind="kde", corner=True)
+    # # plt.tight_layout()
+    # plt.savefig(f"results/{args.task}/posterior.png")
+    # plt.close()
     
     # perform calibration
     print("Calibrating...")
-    calibration_theta, calibration_x = generate_data(10_000, return_theta=True)
-    cal_scores = []
-    for calibration_theta_pt, calibration_x_pt in zip(calibration_theta, calibration_x):
-        log_prob = encoder.log_prob(calibration_theta_pt.view(1,-1).to(device), calibration_x_pt.view(1,-1).to(device)).detach()
-        prob = log_prob.cpu().exp().numpy()
-        cal_scores.append(1 / prob)
-    cal_scores = np.array(cal_scores)
+    cal_score_per_encoder = []
+    for encoder in encoders:
+        calibration_theta, calibration_x = generate_data(1_000, return_theta=True)
+        cal_scores = []
+        for calibration_theta_pt, calibration_x_pt in zip(calibration_theta, calibration_x):
+            log_prob = encoder.log_prob(calibration_theta_pt.view(1,-1).to(device), calibration_x_pt.view(1,-1).to(device)).detach()
+            prob = log_prob.cpu().exp().numpy()
+            cal_scores.append(1 / prob)
+        cal_scores = np.array(cal_scores).flatten()
+        score_quantile = np.quantile(cal_scores, q = 0.95)
+        
+        sns.histplot(x=cal_scores)
+        plt.axvline(score_quantile, color="r")
+        plt.text(score_quantile, -10.0,'$\\widehat{q}$')
+
+        plt.xlabel("$1 / q_\\varphi(\\cdot)$")
+        plt.ylabel("$\mathcal{P}(\\cdot)$")
+        plt.xlim([0, .25])
+        plt.xticks([])
+        plt.yticks([])
+        plt.savefig(f"results/{args.task}/quantile.png")
+
+        cal_score_per_encoder.append(np.array(cal_scores))
+    plt.close()
+    plot(encoders, device, cal_score_per_encoder)
+    plt.close()
 
     # assess conformalization
-    print("Assessing coverage...")
-    conformal_coverages, variational_coverages, desired_coverages = assess_coverage()
-
-    plt.close()
-    plt.plot(desired_coverages, conformal_coverages, label="$\\mathrm{Conformalized}$")
-    plt.plot(desired_coverages, variational_coverages, label="$\\mathrm{Variational}$")
-    plt.plot(desired_coverages, desired_coverages, label="$\\mathrm{Desired}$")
-    plt.legend()
-    plt.title("$\\mathrm{Conformal vs. Variational Coverage}$")
-    
-    plt.tight_layout()
-    plt.savefig(f"results/{args.task}/coverage.png")
+    # print("Assessing coverage...")
+    # assess_coverage(encoders, cal_score_per_encoder)
