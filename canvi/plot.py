@@ -23,17 +23,17 @@ plt.rc('ytick', labelsize=BIGGER_SIZE)    # fontsize of the tick labels
 plt.rc('legend', fontsize=BIGGER_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
-def coverage_trial(test_theta, test_x):
+def coverage_trial(encoder, test_theta, test_x):
     test_scores = 1 / encoder.log_prob(test_theta.to(device), test_x.to(device)).detach().cpu().exp().numpy()
     return [np.sum(test_scores < conformal_quantile) / trial_sims for conformal_quantile in conformal_quantiles]
 
-def var_coverage_trial(test_theta, test_x):
+def var_coverage_trial(encoder, test_theta, test_x):
     variational_dist_samples = 100
     empirical_theta_dist = encoder.sample((variational_dist_samples), test_x)
     sample_x = np.transpose(np.tile(test_x, (variational_dist_samples,1,1)), (1, 0, 2))
 
     flat_empirical_theta_dist = empirical_theta_dist.reshape(-1, empirical_theta_dist.shape[-1])
-    flat_sample_x = sample_x.reshape(-1, empirical_theta_dist.shape[-1])
+    flat_sample_x = sample_x.reshape(-1, sample_x.shape[-1])
     var_probs = encoder.log_prob(flat_empirical_theta_dist, flat_sample_x).detach()
     var_log_probs = var_probs.reshape((trial_sims, -1))
     unnorm_probabilities = var_log_probs.cpu().exp().numpy()
@@ -115,8 +115,8 @@ for task_idx, task_name in enumerate(task_names):
     for i in range(total_trials):
         df = pd.DataFrame(columns=["confidence", "coverages"])
         df["confidence"] = desired_coverages
-        df["coverages"] = coverage_trial(test_thetas[i], test_xs[i])
-        df["var_coverages"] = var_coverage_trial(test_thetas[i], test_xs[i])
+        df["coverages"] = coverage_trial(encoder, test_thetas[i], test_xs[i])
+        df["var_coverages"] = var_coverage_trial(encoder, test_thetas[i], test_xs[i])
         dfs.append(df)
     df = pd.concat(dfs)
 
