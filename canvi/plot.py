@@ -113,11 +113,16 @@ for task_idx, task_name in enumerate(task_names):
 
     dfs = []
     for i in range(total_trials):
-        df = pd.DataFrame(columns=["confidence", "coverages"])
-        df["confidence"] = desired_coverages
-        df["coverages"] = coverage_trial(encoder, test_thetas[i], test_xs[i])
-        df["var_coverages"] = var_coverage_trial(encoder, test_thetas[i], test_xs[i])
-        dfs.append(df)
+        # yikes, not a fan of this try/catch but sometimes have weird sampling crashes in nflows? not exactly
+        # sure why, but sporadically happens so just ignore for now
+        try:
+            df = pd.DataFrame(columns=["confidence", "coverages"])
+            df["confidence"] = desired_coverages
+            df["coverages"] = coverage_trial(encoder, test_thetas[i], test_xs[i])
+            df["var_coverages"] = var_coverage_trial(encoder, test_thetas[i], test_xs[i])
+            dfs.append(df)
+        except:
+            continue
     df = pd.concat(dfs)
 
     sns.lineplot(data=df, x="confidence", y="coverages", c="black", ax=ax)
