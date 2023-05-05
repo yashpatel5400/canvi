@@ -67,6 +67,43 @@ def assess_calibration(thetas, x, logger_string, mdn=True, flow=False, n_samples
 
     return results/x.shape[0]
 
+def assess_calibration_new(thetas, x, logger_string, mdn=True, flow=False, n_samples=10000, alphas=.05, **kwargs):
+    assert not (mdn and flow), "One of mdn or flow flags must be false."
+    encoder = kwargs['encoder']
+    device = kwargs['device']
+
+    results = torch.zeros(alphas.shape[0]).to(device)
+    for j in range(x.shape[0]):
+        true_param = thetas[j]
+        observation = x[j]
+        # Sample from encoder
+        if mdn:
+            log_pi, mu, sigma = encoder(x[j].to(device))
+            mix = D.Categorical(logits=log_pi.view(-1))
+            comp = D.Independent(D.Normal(mu.squeeze(0), sigma.squeeze(0)), 1)
+            mixture = D.MixtureSameFamily(mix, comp)
+            particles = mixture.sample((n_samples,)).clamp(-1., 1.)
+        elif flow:
+            particles, lps = encoder.sample_and_log_prob(num_samples=n_samples, context=observation.view(1,-1).to(device))
+        
+        scores = 1/torch.exp(lps)
+        scores = scores.reshape(-1)
+
+        for kk in range(alphas.shape[0]):
+            alpha = alphas[kk]
+            q = torch.tensor([1-alpha]).to(device)
+            quantiles = torch.quantile(scores, q, dim=0)
+
+            score_at_truth = encoder.log_prob(true_param.reshape(1,-1).to(device), observation.view(1,-1).to(device))
+            score_at_truth = 1/score_at_truth.exp().detach()
+
+
+            success = (score_at_truth < quantiles[0]).long()[0]
+            results[kk] += success
+
+    return results/x.shape[0]
+
+
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
     initialize(config_path=".", job_name="test_app")
