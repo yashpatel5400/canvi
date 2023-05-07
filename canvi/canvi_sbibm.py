@@ -12,6 +12,7 @@ python canvi_sbibm.py --task slcp_distractors --cuda_idx 6
 python canvi_sbibm.py --task bernoulli_glm_raw --cuda_idx 7
 """
 
+import numpy as np
 import sbibm
 import torch
 import math
@@ -28,6 +29,17 @@ from pyknos.nflows import flows, transforms
 from pyknos.nflows.nn import nets
 from pyknos.nflows.transforms.splines import rational_quadratic
 from torch import Tensor, nn, relu, tanh, tensor, uint8
+
+import seaborn as sns
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
+mpl.rcParams['text.usetex'] = True
+mpl.rcParams['mathtext.fontset'] = 'stix'
+mpl.rcParams['font.family'] = 'STIXGeneral'
+mpl.rcParams['text.latex.preamble'] = r'\usepackage{amsfonts}'
+
+sns.set_theme()
 
 from sbi.utils.sbiutils import (
     standardizing_net,
@@ -249,6 +261,27 @@ def generate_data(prior, simulator, n_pts, return_theta=False):
     else:
         return x
 
+def ci_len(encoder, q_hat):
+    test_sims = 100
+    test_theta, test_x = generate_data(prior, simulator, test_sims, return_theta=True)
+
+    # can do grid naively for this simple case (wouldn't work in real cases but fine for toy)
+    discretization = 0.1
+    single_theta = np.mgrid[
+        -2:(2 + discretization):discretization, 
+        -2:(2 + discretization):discretization, 
+    ].reshape(test_theta.shape[-1], -1).T
+    theta_grid = torch.tensor(np.tile(single_theta, (test_sims, 1)), dtype=torch.float32).to(device)
+    test_X_grid = torch.tensor(np.tile(test_x, (single_theta.shape[0], 1))).to(device)
+    grid_scores = 1 / encoder.log_prob(theta_grid, test_X_grid).detach().cpu().exp().numpy()
+    grid_scores = grid_scores.reshape(test_sims, -1) # reshape back to 2D grid per-trial
+
+    # hacky solution to vectorize this computation, but hey, I like it
+    confidence_mask = np.zeros(grid_scores.shape)
+    confidence_mask[grid_scores < q_hat] = discretization
+    interval_lengths = np.sum(confidence_mask, axis=1)
+    return np.mean(interval_lengths)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--task")
@@ -277,18 +310,36 @@ if __name__ == "__main__":
 
     cached_fn = f"{args.task}.nf"
 
-    if os.path.exists(cached_fn):
-        with open(cached_fn, "rb") as f:
-            encoder = pickle.load(f)
-        encoder.to(device)
-    else:
-        for j in range(5000):
-            theta, x = generate_data(prior, simulator, mb_size, return_theta=True)
-            optimizer.zero_grad()
-            loss = -1 * encoder.log_prob(theta.to(device), x.to(device)).mean()
-            loss.backward()
-            optimizer.step()
-            print('Iteration {}: loss {}'.format(j, loss.item()))
+    alpha = 0.05
+    cal_sims = 10_000
+    calibration_theta, calibration_x = generate_data(prior, simulator, cal_sims, return_theta=True)
+    
+    cv_len_iterate = 1
+    cv_lens = True # choose iterate with lowest average width
+    recorded_iterates = []
+    averages_lens = []
+
+    for j in range(10):
+        theta, x = generate_data(prior, simulator, mb_size, return_theta=True)
+        optimizer.zero_grad()
+        loss = -1 * encoder.log_prob(theta.to(device), x.to(device)).mean()
+        loss.backward()
+        optimizer.step()
         
-        with open(cached_fn, "wb") as f:
-            pickle.dump(encoder, f)
+        if cv_lens and j % cv_len_iterate == 0:
+            cal_scores = 1 / encoder.log_prob(calibration_theta.to(device), calibration_x.to(device)).detach().cpu().exp().numpy()
+            q_hat = np.quantile(cal_scores, q = 1 - alpha)
+            avg_ci_len = ci_len(encoder, q_hat)
+            recorded_iterates.append(j)
+            averages_lens.append(avg_ci_len)
+        print('Iteration {}: loss {}'.format(j, loss.item()))
+    
+    plt.title(r"$t \mathrm{\ vs.\ } \mathbb{E}_X[\mathcal{L}(\cdot)]$")
+    plt.xlabel(r"$t$")
+    plt.ylabel("$\mathbb{E}_X[\mathcal{L}(\cdot)]$")
+
+    sns.lineplot(x=recorded_iterates, y=averages_lens)
+    plt.savefig(f"{args.task}_set_sizes.png")
+    
+    with open(cached_fn, "wb") as f:
+        pickle.dump(encoder, f)
