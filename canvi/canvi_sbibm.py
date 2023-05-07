@@ -12,6 +12,7 @@ python canvi_sbibm.py --task slcp_distractors --cuda_idx 6
 python canvi_sbibm.py --task bernoulli_glm_raw --cuda_idx 7
 """
 
+import pandas as pd
 import numpy as np
 import sbibm
 import torch
@@ -261,18 +262,7 @@ def generate_data(prior, simulator, n_pts, return_theta=False):
     else:
         return x
 
-def ci_len(encoder, q_hat):
-    test_sims = 100
-    test_theta, test_x = generate_data(prior, simulator, test_sims, return_theta=True)
-
-    # can do grid naively for this simple case (wouldn't work in real cases but fine for toy)
-    discretization = 0.1
-    single_theta = np.mgrid[
-        -2:(2 + discretization):discretization, 
-        -2:(2 + discretization):discretization, 
-    ].reshape(test_theta.shape[-1], -1).T
-    theta_grid = torch.tensor(np.tile(single_theta, (test_sims, 1)), dtype=torch.float32).to(device)
-    test_X_grid = torch.tensor(np.tile(test_x, (single_theta.shape[0], 1))).to(device)
+def ci_len(encoder, q_hat, theta_grid, test_X_grid, test_sims, discretization):
     grid_scores = 1 / encoder.log_prob(theta_grid, test_X_grid).detach().cpu().exp().numpy()
     grid_scores = grid_scores.reshape(test_sims, -1) # reshape back to 2D grid per-trial
 
@@ -298,7 +288,7 @@ if __name__ == "__main__":
     device = f"cuda:0"
 
     # EXAMPLE BATCH FOR SHAPES
-    z_dim = setup_theta.shape[-1]
+    z_dim = setup_theta[...,:2].shape[-1]
     x_dim = setup_x.shape[-1]
     num_obs_flow = mb_size
     fake_zs = torch.randn((mb_size, z_dim))
@@ -313,14 +303,35 @@ if __name__ == "__main__":
     alpha = 0.05
     cal_sims = 10_000
     calibration_theta, calibration_x = generate_data(prior, simulator, cal_sims, return_theta=True)
+    calibration_theta = calibration_theta[...,:2]
     
-    cv_len_iterate = 1
-    cv_lens = True # choose iterate with lowest average width
-    recorded_iterates = []
-    averages_lens = []
+    # find range with a bit of slack
+    cv_len_iterate = 100
+    cv_lens = calibration_theta.shape[-1] < 6 # choose iterate with lowest average width
+    if cv_lens:
+        mins = np.round(torch.min(calibration_theta, axis=0)[0] - 0.1, 2)
+        maxs = np.round(torch.max(calibration_theta, axis=0)[0] + 0.1, 2)
+    
+        recorded_iterates = []
+        averages_lens = []
 
-    for j in range(10):
+        # cached for entire evaluation
+        test_sims = 50
+        test_theta, test_x = generate_data(prior, simulator, test_sims, return_theta=True)
+        test_theta = test_theta[...,:2]
+
+        # can do grid naively for this simple case (wouldn't work in real cases but fine for toy)
+        num_discretizations = 100
+        discretization = (maxs[0] - mins[0]) / num_discretizations # assume same for all dimensions
+        xs = [np.linspace(min_, max_, num_discretizations) for min_, max_ in zip(mins, maxs)]
+        single_theta = np.array(np.meshgrid(*xs)).reshape(test_theta.shape[-1], -1).T
+        
+        theta_grid = torch.tensor(np.tile(single_theta, (test_sims, 1)), dtype=torch.float32).to(device)
+        test_X_grid = torch.tensor(np.tile(test_x, (single_theta.shape[0], 1))).to(device)
+
+    for j in range(2_501):
         theta, x = generate_data(prior, simulator, mb_size, return_theta=True)
+        theta = theta[...,:2]
         optimizer.zero_grad()
         loss = -1 * encoder.log_prob(theta.to(device), x.to(device)).mean()
         loss.backward()
@@ -329,11 +340,16 @@ if __name__ == "__main__":
         if cv_lens and j % cv_len_iterate == 0:
             cal_scores = 1 / encoder.log_prob(calibration_theta.to(device), calibration_x.to(device)).detach().cpu().exp().numpy()
             q_hat = np.quantile(cal_scores, q = 1 - alpha)
-            avg_ci_len = ci_len(encoder, q_hat)
+            avg_ci_len = ci_len(encoder, q_hat, theta_grid, test_X_grid, test_sims, discretization)
             recorded_iterates.append(j)
             averages_lens.append(avg_ci_len)
         print('Iteration {}: loss {}'.format(j, loss.item()))
     
+    df = pd.DataFrame(columns=["x", "y"])
+    df["x"] = recorded_iterates
+    df["y"] = averages_lens
+    df.to_csv(f'{args.task}.csv', mode='a', header=False)
+
     plt.title(r"$t \mathrm{\ vs.\ } \mathbb{E}_X[\mathcal{L}(\cdot)]$")
     plt.xlabel(r"$t$")
     plt.ylabel("$\mathbb{E}_X[\mathcal{L}(\cdot)]$")
