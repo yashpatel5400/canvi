@@ -25,14 +25,14 @@ encoder:
   run: true
 
 smc:
-  K: 1000
+  K: 10
   skip: false
   only: false
   index: 0
 
 plots:
-  index: 0
-  losses: ['elbo', 'iwbo', 'favi']
+  points_to_plot: [4, 7, 8, 19, 25, 28, 30]
+  losses: ['elbo', 'favi']
   alphas: [.5, .25, .1, .05]
   lr: 1e-4
   n_test_points: 1000

@@ -33,23 +33,19 @@ import torch
 from operator import add
 import torch.distributions as D
 
-def assess_calibration_canvi(cal_scores, thetas, x, logger_string, n_samples=10000, alphas=.05, **kwargs):
+def assess_calibration_canvi(cal_scores, thetas, x, logger_string, n_samples=1000, alphas=[.05], **kwargs):
     encoder = kwargs['encoder']
+    device = kwargs['device']
 
-    results = torch.zeros(alphas.shape[0])
+    results = torch.zeros(alphas.shape[0]).to(device)
+    scores_at_truth = -1*encoder.log_prob(thetas, x.to(device))
 
-    for kk in range(alphas.shape[0]):
-        alpha = alphas[kk]
-        q = torch.tensor([1-alpha])
+    for j in range(alphas.shape[0]):
+        alpha = alphas[j]
+        q = torch.tensor([1-alpha]).to(device)
         quantiles = torch.quantile(cal_scores, q, dim=0)
-
-        # Sample from encoder
-        lps = encoder.log_prob(thetas, x).detach()
-        probs = lps.exp().cpu()
-        scores = 1/probs
-
-        success = (scores <= quantiles[0]).long().sum()
-        results[kk] = success/x.shape[0]
+        success = ((scores_at_truth < quantiles[0])).long().float()
+        results[j] += success.mean(0)
 
     return results
 
@@ -118,17 +114,20 @@ def main(cfg : DictConfig) -> None:
     dir = cfg.dir
     os.chdir(dir)
 
+    cfg.training.device = 'cpu'
+
     cfg.smc.skip = True
     (true_theta, 
     true_x, 
     logger_string,
     encoder,
     optimizer,
-    loss_fcn,
     kwargs) = setup(cfg)
 
+    #test_theta, test_x = generate_data(cfg.plots.n_test_points, **kwargs)
     kwargs.pop('encoder')
     kwargs.pop('loss')
+
     
     mapper = {
     'elbo': 'ELBO',
@@ -152,9 +151,7 @@ def main(cfg : DictConfig) -> None:
         # Calibration scores
         calibration_theta, calibration_x = generate_data(100000, **kwargs)
         lps = encoder.log_prob(calibration_theta, calibration_x).detach()
-        probs = lps.cpu().exp().numpy()
-        cal_scores = 1/probs
-        cal_scores = torch.tensor(cal_scores).reshape(-1)
+        cal_scores = -1*lps.reshape(-1)
 
         for j in range(10):
             print('Trial number {}'.format(j))
@@ -184,7 +181,7 @@ def main(cfg : DictConfig) -> None:
     final = final.set_axis(alphas.detach().numpy(), axis='index')
     final.rename(mapper=mapper, inplace=True, axis=1)
 
-    with open('./figs/lr={},K={},all_canvi.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
+    with open('./figs/lr={},K={},hpr_canvi.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
         tf.write(final.to_latex())
 
 if __name__ == "__main__":

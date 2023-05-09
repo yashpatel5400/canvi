@@ -48,48 +48,51 @@ from utils import posterior, normalizing_integral, transform_parameters
 from setup import setup
 
 
-def assess_calibration(thetas, x, n_samples=1000, alpha=.05, **kwargs):
+# def assess_calibration(thetas, x, n_samples=1000, alpha=.05, **kwargs):
+#     device = kwargs['device']
+#     encoder = kwargs['encoder']
+
+#     results = torch.zeros_like(thetas[0])
+#     for j in range(x.shape[0]):
+#         true_param = thetas[j]
+#         observation = x[j]
+#         particles, log_denoms = encoder.sample_and_log_prob(num_samples=n_samples, context=x[j].view(1,-1).float().to(device))
+#         particles = particles.reshape(n_samples, -1)
+#         q = torch.tensor([alpha/2, 1-alpha/2]).to(device)
+#         quantiles = torch.quantile(particles, q, dim=0)
+#         success = ((true_param > quantiles[0]) & (true_param < quantiles[1])).long()
+#         results += success
+
+#     return results/x.shape[0]
+
+# def assess_calibration(thetas, x, n_samples=1000, alpha=.05, **kwargs):
+#     device = kwargs['device']
+#     encoder = kwargs['encoder']
+
+#     results = torch.zeros_like(thetas[0])
+#     for j in range(x.shape[0]):
+#         true_param = thetas[j]
+#         observation = x[j]
+
+#         log_pi, mu, sigma = encoder(observation.view(1,-1).to(device))
+#         mix = D.Categorical(logits=log_pi)
+#         comp = D.Independent(D.Normal(mu, sigma), 1)
+#         mixture = D.MixtureSameFamily(mix, comp)
+#         particles = mixture.sample((10000,))
+#         particles = particles.reshape(10000, -1)
+
+#         q = torch.tensor([alpha/2, 1-alpha/2]).to(device)
+#         quantiles = torch.quantile(particles, q, dim=0)
+#         success = ((true_param > quantiles[0]) & (true_param < quantiles[1])).long()
+#         results += success
+
+#     return results/x.shape[0]
+
+
+def plot(index, true_theta, true_x, encoder, **kwargs):
     device = kwargs['device']
-    encoder = kwargs['encoder']
-
-    results = torch.zeros_like(thetas[0])
-    for j in range(x.shape[0]):
-        true_param = thetas[j]
-        observation = x[j]
-        particles, log_denoms = encoder.sample_and_log_prob(num_samples=n_samples, context=x[j].view(1,-1).float().to(device))
-        particles = particles.reshape(n_samples, -1)
-        q = torch.tensor([alpha/2, 1-alpha/2]).to(device)
-        quantiles = torch.quantile(particles, q, dim=0)
-        success = ((true_param > quantiles[0]) & (true_param < quantiles[1])).long()
-        results += success
-
-    return results/x.shape[0]
-
-def assess_calibration(thetas, x, n_samples=1000, alpha=.05, **kwargs):
-    device = kwargs['device']
-    encoder = kwargs['encoder']
-
-    results = torch.zeros_like(thetas[0])
-    for j in range(x.shape[0]):
-        true_param = thetas[j]
-        observation = x[j]
-
-        log_pi, mu, sigma = encoder(observation.view(1,-1).to(device))
-        mix = D.Categorical(logits=log_pi)
-        comp = D.Independent(D.Normal(mu, sigma), 1)
-        mixture = D.MixtureSameFamily(mix, comp)
-        particles = mixture.sample((10000,))
-        particles = particles.reshape(10000, -1)
-
-        q = torch.tensor([alpha/2, 1-alpha/2]).to(device)
-        quantiles = torch.quantile(particles, q, dim=0)
-        success = ((true_param > quantiles[0]) & (true_param < quantiles[1])).long()
-        results += success
-
-    return results/x.shape[0]
-
-
-def plot(index, true_x, encoder, **kwargs):
+    plt.rcParams.update({'font.size': 22})
+    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(30,15))
 
     # Exact posterior
     theta1vals = np.arange(-1., 1., .01)
@@ -103,21 +106,32 @@ def plot(index, true_x, encoder, **kwargs):
         for j in range(Y.shape[1]):
             Z[i,j] = posterior(X[i,j], Y[i,j], x=data, **kwargs)/normalized
 
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(30,15))
-    ax.contour(X, Y, Z, levels=10)
-
-    # Hist 2d
-    # fig, ax = plt.subplots(figsize=(15,15))
-    # ax.hist2d(samples[:,0].detach().numpy(), samples[:,1].detach().numpy(), bins=200, range=[[-1.,1.], [0.,1.]])
-    # ax.set_title('SMC Approx. K={}'.format(K))
+    
+    #ax.contour(X, Y, Z, levels=10)
+    ax[0].pcolormesh(X, Y, Z)
+    ax[0].plot(true_theta.detach().cpu()[index][0],true_theta.detach().cpu()[index][1], 'ro', markersize=12)
+    ax[0].set_title('Exact Posterior - Observation {}'.format(index))
     
     # Flow posterior
+    vals1normal = torch.arange(-1., 1., .01)
+    vals2normal = torch.arange(0., 1., .01)
+    eval_pts_normal = torch.cartesian_prod(vals1normal, vals2normal)
+    lps = encoder.log_prob(eval_pts_normal.to(device), true_x[index].view(1,-1).repeat(eval_pts_normal.shape[0],1).to(device)).detach()
+    X, Y = torch.meshgrid(vals1normal, vals2normal)
+    Z = lps.view(X.shape)
+    ax[1].pcolormesh(X.cpu().numpy(), Y.cpu().numpy(), Z.cpu().exp().numpy())
+    ax[1].plot(true_theta.detach().cpu()[index][0], true_theta.detach().cpu()[index][1], 'ro', markersize=12)
+    ax[1].set_title('Approximate Posterior Flow ({}) - Observation {}'.format(kwargs['loss'].upper(), index))
+    plt.tight_layout()
+    plt.savefig('./figs/{}_{}'.format(index, kwargs['loss']))
+
+    return
 
 
-@hydra.main(version_base=None, config_path="../conf", config_name="config5")
+@hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
-    initialize(config_path=".", job_name="test_app")
-    cfg = compose(config_name="config")
+    # initialize(config_path=".", job_name="test_app")
+    # cfg = compose(config_name="config")
     seed = cfg.seed
     torch.manual_seed(seed)
     random.seed(seed)
@@ -132,53 +146,57 @@ def main(cfg : DictConfig) -> None:
     logger_string,
     encoder,
     optimizer,
-    loss_fcn,
     kwargs) = setup(cfg)
 
-    # encoder.load_state_dict(torch.load('./weights/{},{}.pth'.format(loss, cfg.plots.lr, kwargs['K']))
-    # encoder.eval()
+    kwargs.pop('encoder')
+
+    encoder.load_state_dict(torch.load('./weights/{}.pth'.format(logger_string)))
+    encoder.eval()
     # device = kwargs['device']
 
     # Plotting code
+    for j in cfg.plots.points_to_plot:
+        plot(j, true_theta, true_x, encoder, **kwargs)
 
-    index = 499
-    # Exact posterior
-    theta1vals = np.arange(-1., 1., .01)
-    theta2vals = np.arange(0., 1., .01)
-    data = true_x[index].cpu().numpy()
-    X, Y = np.meshgrid(theta1vals, theta2vals)
-    Z = np.empty(X.shape)
 
-    normalized = normalizing_integral(x=data, **kwargs)[0]
-    for i in range(X.shape[0]):
-        for j in range(Y.shape[1]):
-            Z[i,j] = posterior(X[i,j], Y[i,j], x=data, **kwargs)/normalized
+    # index = 499
+    # # Exact posterior
+    # theta1vals = np.arange(-1., 1., .01)
+    # theta2vals = np.arange(0., 1., .01)
+    # data = true_x[index].cpu().numpy()
+    # X, Y = np.meshgrid(theta1vals, theta2vals)
+    # Z = np.empty(X.shape)
 
-    plt.rcParams.update({'font.size': 22})
-    fig, ax = plt.subplots(figsize=(30,15))
-    ax.contour(X, Y, Z, levels=10)
-    ax.set_xlabel('$\\theta_1$')
-    ax.set_ylabel('$\\theta_2$')
-    plt.savefig('./figs/theta1={},theta2={}.png'.format(true_theta[index,0].item(), true_theta[index,1].item()))
+    # normalized = normalizing_integral(x=data, **kwargs)[0]
+    # for i in range(X.shape[0]):
+    #     for j in range(Y.shape[1]):
+    #         Z[i,j] = posterior(X[i,j], Y[i,j], x=data, **kwargs)/normalized
 
-    index = 244
-    # Exact posterior
-    theta1vals = np.arange(-1., 1., .01)
-    theta2vals = np.arange(0., 1., .01)
-    data = true_x[index].cpu().numpy()
-    X, Y = np.meshgrid(theta1vals, theta2vals)
-    Z = np.empty(X.shape)
+    # plt.rcParams.update({'font.size': 22})
+    # fig, ax = plt.subplots(figsize=(30,15))
+    # ax.contour(X, Y, Z, levels=10)
+    # ax.set_xlabel('$\\theta_1$')
+    # ax.set_ylabel('$\\theta_2$')
+    # plt.savefig('./figs/theta1={},theta2={}.png'.format(true_theta[index,0].item(), true_theta[index,1].item()))
 
-    normalized = normalizing_integral(x=data, **kwargs)[0]
-    for i in range(X.shape[0]):
-        for j in range(Y.shape[1]):
-            Z[i,j] = posterior(X[i,j], Y[i,j], x=data, **kwargs)/normalized
+    # index = 244
+    # # Exact posterior
+    # theta1vals = np.arange(-1., 1., .01)
+    # theta2vals = np.arange(0., 1., .01)
+    # data = true_x[index].cpu().numpy()
+    # X, Y = np.meshgrid(theta1vals, theta2vals)
+    # Z = np.empty(X.shape)
 
-    fig, ax = plt.subplots(figsize=(30,15))
-    ax.contour(X, Y, Z, levels=10)
-    ax.set_xlabel('$\\theta_1$')
-    ax.set_ylabel('$\\theta_2$')
-    plt.savefig('./figs/theta1={},theta2={}.png'.format(true_theta[index,0].item(), true_theta[index,1].item()))
+    # normalized = normalizing_integral(x=data, **kwargs)[0]
+    # for i in range(X.shape[0]):
+    #     for j in range(Y.shape[1]):
+    #         Z[i,j] = posterior(X[i,j], Y[i,j], x=data, **kwargs)/normalized
+
+    # fig, ax = plt.subplots(figsize=(30,15))
+    # ax.contour(X, Y, Z, levels=10)
+    # ax.set_xlabel('$\\theta_1$')
+    # ax.set_ylabel('$\\theta_2$')
+    # plt.savefig('./figs/theta1={},theta2={}.png'.format(true_theta[index,0].item(), true_theta[index,1].item()))
 
     # # 2d hist
     # device = kwargs['device']
@@ -199,30 +217,26 @@ def main(cfg : DictConfig) -> None:
     # ax.pcolormesh(X.cpu().numpy(), Y.cpu().numpy(), Z.cpu().exp().numpy())
     # ax.set_title('Approximate Posterior Flow')
 
-    # 2d hist
-    device = kwargs['device']
-    log_pi, mu, sigma = encoder(true_x[index].view(1,-1).to(device))
-    mix = D.Categorical(logits=log_pi)
-    comp = D.Independent(D.Normal(mu, sigma), 1)
-    mixture = D.MixtureSameFamily(mix, comp)
-    particles = mixture.sample((10000,))
-    particles = particles.reshape(10000, -1)
-    # ttheta = transform_parameters(particles, **kwargs)
-    ttheta = particles
-    fig, ax = plt.subplots(figsize=(15,15))
-    ax.hist2d(ttheta[:,0].detach().cpu().numpy(), ttheta[:,1].detach().cpu().numpy(), bins=100, range=[[-1.,1.], [0.,1.]])
+    # # 2d hist
+    # device = kwargs['device']
+    # log_pi, mu, sigma = encoder(true_x[index].view(1,-1).to(device))
+    # mix = D.Categorical(logits=log_pi)
+    # comp = D.Independent(D.Normal(mu, sigma), 1)
+    # mixture = D.MixtureSameFamily(mix, comp)
+    # particles = mixture.sample((10000,))
+    # particles = particles.reshape(10000, -1)
+    # # ttheta = transform_parameters(particles, **kwargs)
+    # ttheta = particles
+    # fig, ax = plt.subplots(figsize=(15,15))
+    # ax.hist2d(ttheta[:,0].detach().cpu().numpy(), ttheta[:,1].detach().cpu().numpy(), bins=100, range=[[-1.,1.], [0.,1.]])
 
 
-    # Assessing calibration
-    encoder = encoder.to(device)
-    test_theta, test_x = generate_data(1000, **kwargs)
-    assess_calibration(test_theta, test_x, n_samples=1000, alpha=.1, **kwargs)
+    # # Assessing calibration
+    # encoder = encoder.to(device)
+    # test_theta, test_x = generate_data(1000, **kwargs)
+    # assess_calibration(test_theta, test_x, n_samples=1000, alpha=.1, **kwargs)
 
-    assess_calibration(true_theta, true_x, n_samples=1000, alpha=.05, **kwargs)
-
-
-
-
+    # assess_calibration(true_theta, true_x, n_samples=1000, alpha=.05, **kwargs)
 
 
 if __name__ == "__main__":

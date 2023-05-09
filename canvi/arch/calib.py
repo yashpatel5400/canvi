@@ -33,70 +33,79 @@ from operator import add
 from generate import generate_data
 import torch.distributions as D
 
-def assess_calibration(thetas, x, logger_string, mdn=True, flow=False, n_samples=10000, alphas=.05, **kwargs):
+def assess_calibration_dimensionwise(thetas, x, logger_string, mdn=True, flow=False, n_samples=1000, alphas=[.05], **kwargs):
     assert not (mdn and flow), "One of mdn or flow flags must be false."
     encoder = kwargs['encoder']
     device = kwargs['device']
 
     results = torch.zeros(alphas.shape[0], thetas.shape[1]).to(device)
-    for j in range(x.shape[0]):
-        true_param = thetas[j]
-        observation = x[j]
-        # Sample from encoder
-        if mdn:
-            log_pi, mu, sigma = encoder(x[j].to(device))
-            mix = D.Categorical(logits=log_pi.view(-1))
-            comp = D.Independent(D.Normal(mu.squeeze(0), sigma.squeeze(0)), 1)
-            mixture = D.MixtureSameFamily(mix, comp)
-            particles = mixture.sample((n_samples,)).clamp(-1., 1.)
-        elif flow:
-            particles = encoder.sample(num_samples=n_samples, context=observation.view(1,-1).to(device))
-        particles = particles.reshape(n_samples, -1)
 
-        for j in range(alphas.shape[0]):
-            alpha = alphas[j]
-            q = torch.tensor([alpha/2, 1-alpha/2]).to(device)
-            quantiles = torch.quantile(particles, q, dim=0)
-            success = ((true_param > quantiles[0]) & (true_param < quantiles[1])).long()
-            results[j] += success
+    particles = encoder.sample(n_samples, x.to(device))
+    #particles = particles.reshape(n_samples, -1)
 
-    return results/x.shape[0]
+    for j in range(alphas.shape[0]):
+        alpha = alphas[j]
+        q = torch.tensor([alpha/2, 1-alpha/2]).to(device)
+        quantiles = torch.quantile(particles, q, dim=1)
+        success = ((thetas > quantiles[0]) & (thetas < quantiles[1])).long().float()
+        results[j] += success.mean(0)
 
-def assess_calibration_new(thetas, x, logger_string, mdn=True, flow=False, n_samples=10000, alphas=.05, **kwargs):
-    assert not (mdn and flow), "One of mdn or flow flags must be false."
+    return results
+
+def assess_calibration_hpr(thetas, x, logger_string, mdn=True, flow=False, n_samples=1000, alphas=[.05], **kwargs):
     encoder = kwargs['encoder']
     device = kwargs['device']
 
     results = torch.zeros(alphas.shape[0]).to(device)
-    for j in range(x.shape[0]):
-        true_param = thetas[j]
-        observation = x[j]
-        # Sample from encoder
-        if mdn:
-            log_pi, mu, sigma = encoder(x[j].to(device))
-            mix = D.Categorical(logits=log_pi.view(-1))
-            comp = D.Independent(D.Normal(mu.squeeze(0), sigma.squeeze(0)), 1)
-            mixture = D.MixtureSameFamily(mix, comp)
-            particles = mixture.sample((n_samples,)).clamp(-1., 1.)
-        elif flow:
-            particles, lps = encoder.sample_and_log_prob(num_samples=n_samples, context=observation.view(1,-1).to(device))
+    particles, lps = encoder.sample_and_log_prob(n_samples, x.to(device))
+    scores = -1*lps
+
+    scores_at_truth = -1*encoder.log_prob(thetas, x.to(device))
+
+    for j in range(alphas.shape[0]):
+        alpha = alphas[j]
+        q = torch.tensor([1-alpha]).to(device)
+        quantiles = torch.quantile(scores, q, dim=1).reshape(-1)
+        success = ((scores_at_truth < quantiles)).long().float()
+        results[j] += success.mean(0)
+
+    return results
+
+# def assess_calibration_new(thetas, x, logger_string, mdn=True, flow=False, n_samples=10000, alphas=.05, **kwargs):
+#     assert not (mdn and flow), "One of mdn or flow flags must be false."
+#     encoder = kwargs['encoder']
+#     device = kwargs['device']
+
+#     results = torch.zeros(alphas.shape[0]).to(device)
+#     for j in range(x.shape[0]):
+#         true_param = thetas[j]
+#         observation = x[j]
+#         # Sample from encoder
+#         if mdn:
+#             log_pi, mu, sigma = encoder(x[j].to(device))
+#             mix = D.Categorical(logits=log_pi.view(-1))
+#             comp = D.Independent(D.Normal(mu.squeeze(0), sigma.squeeze(0)), 1)
+#             mixture = D.MixtureSameFamily(mix, comp)
+#             particles = mixture.sample((n_samples,)).clamp(-1., 1.)
+#         elif flow:
+#             particles, lps = encoder.sample_and_log_prob(num_samples=n_samples, context=observation.view(1,-1).to(device))
         
-        scores = 1/torch.exp(lps)
-        scores = scores.reshape(-1)
+#         scores = 1/torch.exp(lps)
+#         scores = scores.reshape(-1)
 
-        for kk in range(alphas.shape[0]):
-            alpha = alphas[kk]
-            q = torch.tensor([1-alpha]).to(device)
-            quantiles = torch.quantile(scores, q, dim=0)
+#         for kk in range(alphas.shape[0]):
+#             alpha = alphas[kk]
+#             q = torch.tensor([1-alpha]).to(device)
+#             quantiles = torch.quantile(scores, q, dim=0)
 
-            score_at_truth = encoder.log_prob(true_param.reshape(1,-1).to(device), observation.view(1,-1).to(device))
-            score_at_truth = 1/score_at_truth.exp().detach()
+#             score_at_truth = encoder.log_prob(true_param.reshape(1,-1).to(device), observation.view(1,-1).to(device))
+#             score_at_truth = 1/score_at_truth.exp().detach()
 
 
-            success = (score_at_truth < quantiles[0]).long()[0]
-            results[kk] += success
+#             success = (score_at_truth < quantiles[0]).long()[0]
+#             results[kk] += success
 
-    return results/x.shape[0]
+#     return results/x.shape[0]
 
 def plot_hpr(j, thetas, x, logger_string, mdn=True, flow=False, n_samples=10000, alpha=.05, **kwargs):
     assert not (mdn and flow), "One of mdn or flow flags must be false."
@@ -139,16 +148,17 @@ def main(cfg : DictConfig) -> None:
     dir = cfg.dir
     os.chdir(dir)
 
+    cfg.training.device = 'cpu'
+
     cfg.smc.skip = True
     (true_theta, 
     true_x, 
     logger_string,
     encoder,
     optimizer,
-    loss_fcn,
     kwargs) = setup(cfg)
 
-    test_theta, test_x = generate_data(cfg.plots.n_test_points, **kwargs)
+    #test_theta, test_x = generate_data(cfg.plots.n_test_points, **kwargs)
     kwargs.pop('encoder')
     kwargs.pop('loss')
 
@@ -160,9 +170,11 @@ def main(cfg : DictConfig) -> None:
 
     names = list(map(lambda name: mapper[name], cfg.plots.losses))
     alphas = torch.tensor(cfg.plots.alphas)
-    calib_results = {}
+    calib_results_dimensionwise = {}
+    calib_results_hpr = {}
     for loss in cfg.plots.losses:
-        calib_results[str(loss)] = []
+        calib_results_dimensionwise[str(loss)] = []
+        calib_results_hpr[str(loss)] = []
 
     for loss in cfg.plots.losses:
         print('Working on {}'.format(loss))
@@ -173,21 +185,28 @@ def main(cfg : DictConfig) -> None:
 
         for j in range(10):
             print('Trial number {}'.format(j))
-
             try:
                 test_theta, test_x = generate_data(cfg.plots.n_test_points, **kwargs)
-                assessment = assess_calibration(test_theta, test_x, logger_string, mdn=False, flow=True, alphas=alphas, **kwargs)
-                calib_results[str(loss)].append(assessment)
+                assessment_dim = assess_calibration_dimensionwise(test_theta, test_x, logger_string, mdn=False, flow=True, alphas=alphas, **kwargs)
+                calib_results_dimensionwise[str(loss)].append(assessment_dim)
+                assessment_hpr = assess_calibration_hpr(test_theta, test_x, logger_string, mdn=False, flow=True, alphas=alphas, **kwargs)
+                calib_results_hpr[str(loss)].append(assessment_hpr)
             except:
                 continue
 
     means = {}
     stds = {}
+    means_hpr = {}
+    stds_hpr = {}
 
-    for key, value in calib_results.items():
+    for key, value in calib_results_dimensionwise.items():
         means[key] = torch.mean(torch.stack(value), 0).cpu()
         stds[key] = torch.std(torch.stack(value), 0).cpu()
+    for key, value in calib_results_hpr.items():
+        means_hpr[key] = torch.mean(torch.stack(value), 0).cpu()
+        stds_hpr[key] = torch.std(torch.stack(value), 0).cpu()
 
+    # Dimensionwise Formatting + Results
     param1 = {}
     param2 = {}
     
@@ -203,12 +222,11 @@ def main(cfg : DictConfig) -> None:
         param1[key] = map(add, param1[key], std_strs_1)
         param2[key] = map(add, param2[key], std_strs_2)
         
-
     results1 = pd.DataFrame(param1)
     results2 = pd.DataFrame(param2)
     
-    results1 = results1.set_axis(alphas.detach().numpy(), axis='index')
-    results2 = results2.set_axis(alphas.detach().numpy(), axis='index')
+    results1 = results1.set_axis((1-alphas).detach().numpy(), axis='index')
+    results2 = results2.set_axis((1-alphas).detach().numpy(), axis='index')
     
     results1.rename(mapper=mapper, inplace=True, axis=1)
     results2.rename(mapper=mapper, inplace=True, axis=1)
@@ -218,6 +236,21 @@ def main(cfg : DictConfig) -> None:
         tf.write(results1.to_latex())
     with open('./figs/lr={},K={},theta2.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
         tf.write(results2.to_latex())
+
+    # HPR Formatting + Results
+    final = {}
+    for key, value in means_hpr.items():
+        final[key] = ['{0:.4f}'.format(num) for num in list(value.numpy())]
+    
+    for key, value in stds_hpr.items():
+        std_strs = [' ({0:.4f})'.format(num) for num in list(value.numpy())]
+        final[key] = map(add, final[key], std_strs)
+    final = pd.DataFrame(final)
+    final = final.set_axis((1-alphas).detach().numpy(), axis='index')
+    final.rename(mapper=mapper, inplace=True, axis=1)
+    with open('./figs/lr={},K={},hpr.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
+        tf.write(final.to_latex())
+
     
 
 if __name__ == "__main__":
