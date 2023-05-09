@@ -180,7 +180,6 @@ def setup(cfg):
             logger_string,
             encoder,
             optimizer,
-            loss_fcn,
             kwargs)
 
  

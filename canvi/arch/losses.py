@@ -51,7 +51,7 @@ def elbo_loss(x, **kwargs):
     particles, weights, log_weights = get_imp_weights(pts, num_samples=K, mdn=False, flow=True, log=True, **kwargs)
     return -1*torch.diag(weights.detach().T @ log_weights).mean()
     
-def favi_loss(loader, **kwargs):
+def favi_loss(**kwargs):
     device = kwargs['device']
     encoder = kwargs['encoder']
     mb_size = kwargs['mb_size']
@@ -60,7 +60,7 @@ def favi_loss(loader, **kwargs):
     lps = encoder.log_prob(z.float().to(device), x.to(device).float())
     return -1*lps.mean()
 
-def favi_loss_mdn(loader, **kwargs):
+def favi_loss_mdn( **kwargs):
     device = kwargs['device']
     encoder = kwargs['encoder']
     mb_size = kwargs['mb_size']

@@ -25,7 +25,7 @@ encoder:
   run: true
 
 smc:
-  K: 10000
+  K: 1000
   skip: false
   only: false
   index: 0

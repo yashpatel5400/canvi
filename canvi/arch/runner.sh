@@ -1,0 +1,1 @@
+python main.py --multirun training.loss=iwbo,elbo,favi

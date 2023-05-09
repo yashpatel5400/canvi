@@ -45,6 +45,16 @@ from generate import generate_data
 from utils import transform_parameters
 from setup import setup
 
+def loss_choice(loss_name, x, **kwargs):
+    if loss_name == 'iwbo':
+        return iwbo_loss(x, **kwargs)
+    elif loss_name == 'elbo':
+        return elbo_loss(x, **kwargs)
+    elif loss_name == 'favi':
+        return favi_loss(**kwargs)
+    else:
+        raise ValueError('Specify an appropriate loss name string.')
+
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
     # initialize(config_path=".", job_name="test_app")
@@ -65,22 +75,23 @@ def main(cfg : DictConfig) -> None:
     logger_string,
     encoder,
     optimizer,
-    loss_fcn,
     kwargs) = setup(cfg)
 
+    loss_name = kwargs['loss']
+    losses = []
     for j in range(kwargs['epochs']):
         optimizer.zero_grad()
-        loss = loss_fcn()
-        print('Loss iter {} is {}'.format(j, loss))
-
-        if loss.item() > 10:
-            continue
+        loss = loss_choice(loss_name, true_x, **kwargs)
+        print('Loss iter {} is {}'.format(j, loss.item()))
 
         loss.backward()
         optimizer.step()
+
+        losses.append(loss.item())
         del loss
 
-
+    losses = np.array(losses)
+    np.save('./logs/{}.npy'.format(logger_string), losses)
     torch.save(encoder.state_dict(), './weights/{}.pth'.format(logger_string))
 
 if __name__ == "__main__":
