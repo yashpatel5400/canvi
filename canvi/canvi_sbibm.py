@@ -288,7 +288,7 @@ if __name__ == "__main__":
     device = f"cuda:0"
 
     # EXAMPLE BATCH FOR SHAPES
-    z_dim = setup_theta[...,:2].shape[-1]
+    z_dim = setup_theta.shape[-1]
     x_dim = setup_x.shape[-1]
     num_obs_flow = mb_size
     fake_zs = torch.randn((mb_size, z_dim))
@@ -298,16 +298,14 @@ if __name__ == "__main__":
     encoder.to(device)
     optimizer = torch.optim.Adam(encoder.parameters(), lr=1e-3)
 
-    cached_fn = f"{args.task}.nf"
-
     alpha = 0.05
     cal_sims = 10_000
     calibration_theta, calibration_x = generate_data(prior, simulator, cal_sims, return_theta=True)
-    calibration_theta = calibration_theta[...,:2]
+    calibration_theta = calibration_theta
     
     # find range with a bit of slack
     cv_len_iterate = 100
-    cv_lens = calibration_theta.shape[-1] < 6 # choose iterate with lowest average width
+    cv_lens = False #  calibration_theta.shape[-1] < 6 # choose iterate with lowest average width
     if cv_lens:
         mins = np.round(torch.min(calibration_theta, axis=0)[0] - 0.1, 2)
         maxs = np.round(torch.max(calibration_theta, axis=0)[0] + 0.1, 2)
@@ -318,7 +316,7 @@ if __name__ == "__main__":
         # cached for entire evaluation
         test_sims = 50
         test_theta, test_x = generate_data(prior, simulator, test_sims, return_theta=True)
-        test_theta = test_theta[...,:2]
+        test_theta = test_theta
 
         # can do grid naively for this simple case (wouldn't work in real cases but fine for toy)
         num_discretizations = 100
@@ -329,9 +327,11 @@ if __name__ == "__main__":
         theta_grid = torch.tensor(np.tile(single_theta, (test_sims, 1)), dtype=torch.float32).to(device)
         test_X_grid = torch.tensor(np.tile(test_x, (single_theta.shape[0], 1))).to(device)
 
-    for j in range(2_501):
+    save_iterate = 500
+
+    for j in range(5_001):
         theta, x = generate_data(prior, simulator, mb_size, return_theta=True)
-        theta = theta[...,:2]
+        theta = theta
         optimizer.zero_grad()
         loss = -1 * encoder.log_prob(theta.to(device), x.to(device)).mean()
         loss.backward()
@@ -344,18 +344,21 @@ if __name__ == "__main__":
             recorded_iterates.append(j)
             averages_lens.append(avg_ci_len)
         print('Iteration {}: loss {}'.format(j, loss.item()))
-    
-    df = pd.DataFrame(columns=["x", "y"])
-    df["x"] = recorded_iterates
-    df["y"] = averages_lens
-    df.to_csv(f'{args.task}.csv', mode='a', header=False)
 
-    plt.title(r"$t \mathrm{\ vs.\ } \mathbb{E}_X[\mathcal{L}(\cdot)]$")
-    plt.xlabel(r"$t$")
-    plt.ylabel("$\mathbb{E}_X[\mathcal{L}(\cdot)]$")
-
-    sns.lineplot(x=recorded_iterates, y=averages_lens)
-    plt.savefig(f"{args.task}_set_sizes.png")
+        if j % save_iterate == 0:    
+            cached_fn = f"{args.task}_epoch={j}.nf"
+            with open(cached_fn, "wb") as f:
+                pickle.dump(encoder, f)
     
-    with open(cached_fn, "wb") as f:
-        pickle.dump(encoder, f)
+    if cv_lens:
+        df = pd.DataFrame(columns=["x", "y"])
+        df["x"] = recorded_iterates
+        df["y"] = averages_lens
+        df.to_csv(f'{args.task}.csv', mode='a', header=False)
+
+        plt.title(r"$t \mathrm{\ vs.\ } \mathbb{E}_X[\mathcal{L}(\cdot)]$")
+        plt.xlabel(r"$t$")
+        plt.ylabel("$\mathbb{E}_X[\mathcal{L}(\cdot)]$")
+
+        sns.lineplot(x=recorded_iterates, y=averages_lens)
+        plt.savefig(f"{args.task}_set_sizes.png")

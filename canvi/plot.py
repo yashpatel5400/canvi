@@ -69,73 +69,98 @@ task_name_titles = [
     'Bernoulli GLM Raw'
 ]
 
+colors = [
+    "#92dc7e",
+    # "#39b48e",
+    "#00898a",
+    # "#08737f",
+    "#2a4858",
+]
+
+iterates = [0, 2000, 4000]
 fig, axs = plt.subplots(nrows=4, ncols=2, figsize=(24,24))
 sns.set_theme()
 
 for task_idx, task_name in enumerate(task_names):
-    print(f"Plotting {task_name}")
-    ax = axs[task_idx // 2, task_idx % 2]
-    
-    task = sbibm.get_task(task_name)
-    prior = task.get_prior_dist()
-    simulator = task.get_simulator()   
-
-    fn = f"{task_name}"
-    cached_fn = f"{fn}.nf"
-    with open(cached_fn, "rb") as f:
-        encoder = pickle.load(f)
-    encoder.to(device)
-
-    total_trials = 10
-
-    trial_sims = 10_000 # same number for both test and calibration
-    sims = (total_trials + 1) * trial_sims
-
-    theta = prior.sample((sims,))
-    x = simulator(theta)
-
-    # very weird, but something odd happens on certain simulation runs if we generate test data at
-    # test time -- just generate all data (both test and calibration) ahead of time to avoid this
-    thetas = torch.split(theta, trial_sims)
-    xs = torch.split(x, trial_sims)
-
-    calibration_theta = thetas[0]
-    calibration_x = xs[0]
-
-    test_thetas = thetas[1:]
-    test_xs = xs[1:]
-
-    num_coverage_pts = 20
-    desired_coverages = [(1 / num_coverage_pts) * k for k in range(num_coverage_pts)]
-
-    cal_scores = 1 / encoder.log_prob(calibration_theta.to(device), calibration_x.to(device)).detach().cpu().exp().numpy()
-    conformal_quantiles = np.array([np.quantile(cal_scores, q = coverage) for coverage in desired_coverages])
-
-    dfs = []
-    for i in range(total_trials):
-        # yikes, not a fan of this try/catch but sometimes have weird sampling crashes in nflows? not exactly
-        # sure why, but sporadically happens so just ignore for now
-        try:
-            df = pd.DataFrame(columns=["confidence", "coverages"])
-            df["confidence"] = desired_coverages
-            df["coverages"] = coverage_trial(encoder, test_thetas[i], test_xs[i])
-            df["var_coverages"] = var_coverage_trial(encoder, test_thetas[i], test_xs[i])
-            dfs.append(df)
-        except:
-            continue
-    df = pd.concat(dfs)
-
-    sns.lineplot(data=df, x="confidence", y="coverages", c="black", ax=ax)
-    sns.lineplot(data=df, x="confidence", y="confidence", c="black", linestyle='--', ax=ax)
-    sns.lineplot(data=df, x="confidence", y="var_coverages", c="red", ax=ax)
+    for iterate_idx, iterate in enumerate(iterates):
+        print(f"Plotting {task_name} -- iterate {iterate}")
+        ax = axs[task_idx // 2, task_idx % 2]
         
-    task_name_title = task_name_titles[task_idx]
-    ax.set_title(task_name_titles[task_idx], fontsize=18)
+        task = sbibm.get_task(task_name)
+        prior = task.get_prior_dist()
+        simulator = task.get_simulator()   
 
-    if task_idx // 2 != 3:
-        ax.set_xlabel("")
-    if task_idx % 2 == 1:
-        ax.set_ylabel("")
+        fn = f"{task_name}"
+        cached_fn = f"{task_name}_epoch={iterate}.nf"
+        with open(cached_fn, "rb") as f:
+            encoder = pickle.load(f)
+        encoder.to(device)
+
+        total_trials = 5
+
+        trial_sims = 10_000 # same number for both test and calibration
+        sims = (total_trials + 1) * trial_sims
+
+        theta = prior.sample((sims,))
+        x = simulator(theta)
+
+        # very weird, but something odd happens on certain simulation runs if we generate test data at
+        # test time -- just generate all data (both test and calibration) ahead of time to avoid this
+        thetas = torch.split(theta, trial_sims)
+        xs = torch.split(x, trial_sims)
+
+        calibration_theta = thetas[0]
+        calibration_x = xs[0]
+
+        test_thetas = thetas[1:]
+        test_xs = xs[1:]
+
+        num_coverage_pts = 20
+        desired_coverages = [(1 / num_coverage_pts) * k for k in range(num_coverage_pts)]
+
+        cal_scores = 1 / encoder.log_prob(calibration_theta.to(device), calibration_x.to(device)).detach().cpu().exp().numpy()
+        conformal_quantiles = np.array([np.quantile(cal_scores, q = coverage) for coverage in desired_coverages])
+
+        dfs = []
+        for i in range(total_trials):
+            # yikes, not a fan of this try/catch but sometimes have weird sampling crashes in nflows? not exactly
+            # sure why, but sporadically happens so just ignore for now
+            try:
+                df = pd.DataFrame(columns=["confidence", "coverages"])
+                df["confidence"] = desired_coverages
+                print(f"CP Trial {i}")
+                df["coverages"] = coverage_trial(encoder, test_thetas[i], test_xs[i])
+                print(f"Var Trial {i}")
+                df["var_coverages"] = var_coverage_trial(encoder, test_thetas[i], test_xs[i])
+                dfs.append(df)
+            except:
+                continue
+        df = pd.concat(dfs)
+
+        sns.lineplot(data=df, x="confidence", y="coverages", c=colors[iterate_idx], linestyle='--', ax=ax)
+        if task_idx == 0:
+            gfg = sns.lineplot(data=df, x="confidence", y="var_coverages", c=colors[iterate_idx], legend="full", label=f"Epoch {iterate}", ax=ax)
+            plt.setp(gfg.get_legend().get_texts(), fontsize='20') 
+        else:
+            sns.lineplot(data=df, x="confidence", y="var_coverages", c=colors[iterate_idx], ax=ax)
+
+        if iterate_idx == 0:
+            sns.lineplot(data=df, x="confidence", y="confidence", c="black", ax=ax)
+            
+        task_name_title = task_name_titles[task_idx]
+        ax.set_title(task_name_titles[task_idx], fontsize=24)
+
+        if task_idx // 2 != 3:
+            ax.set_xlabel("")
+        else:
+            ax.set_xlabel("Confidence",fontsize=20)
+        
+        if task_idx % 2 == 1:
+            ax.set_ylabel("")
+        else:
+            ax.set_ylabel("Coverage",fontsize=20)
     
+plt.suptitle('Confidence vs. Coverage (SBI Benchmarks)', fontsize=28)
 plt.tight_layout()
+plt.subplots_adjust(top=0.94)
 plt.savefig(f"coverages/complete.png")
