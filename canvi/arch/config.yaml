@@ -32,7 +32,7 @@ smc:
 
 plots:
   points_to_plot: [4, 7, 8, 19, 25, 28, 30]
-  losses: ['elbo', 'favi']
+  losses: ['elbo', 'iwbo', 'favi']
   alphas: [.5, .25, .1, .05]
   lr: 1e-4
   n_test_points: 1000
