@@ -32,17 +32,28 @@ import torch.distributions as D
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+from losses import iwbo_loss, elbo_loss, favi_loss
 import hydra
 from hydra import compose, initialize
 from omegaconf import DictConfig
 import random
 from setup import setup
 
+def loss_choice(loss_name, x, **kwargs):
+    if loss_name == 'iwbo':
+        return iwbo_loss(x, mdn=False, flow=True, **kwargs)
+    elif loss_name == 'elbo':
+        return elbo_loss(x, mdn=False, flow=True, **kwargs)
+    elif loss_name == 'favi':
+        return favi_loss(**kwargs)
+    else:
+        raise ValueError('Specify an appropriate loss name string.')
+
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
-    # initialize(config_path=".", job_name="test_app")
-    # cfg = compose(config_name="config")
+    initialize(config_path=".", job_name="test_app")
+    cfg = compose(config_name="config")
     seed = cfg.seed
     torch.manual_seed(seed)
     random.seed(seed)
@@ -64,17 +75,17 @@ def main(cfg : DictConfig) -> None:
         logger_string,
         writer,
         optimizer,
-        loss_fcn,
         kwargs
     ) = setup(cfg)
 
+    loss_name = kwargs['loss']
+    losses = []
     for j in range(epochs):
         if j % 1000 == 0:
             print("On iteration {}".format(j))
-
         optimizer.zero_grad()
         try:
-            loss = loss_fcn()
+            loss = loss_choice(loss_name, seds, **kwargs)
         except:
             continue
         print('Loss iter {} is {}'.format(j, loss))
@@ -83,7 +94,7 @@ def main(cfg : DictConfig) -> None:
         loss.backward()
         optimizer.step()
 
-    torch.save(encoder.state_dict(), './weights/weights_{}'.format(logger_string))
+    torch.save(encoder.state_dict(), './weights/{}.pth'.format(logger_string))
 
 if __name__ == "__main__":
     main()

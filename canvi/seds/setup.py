@@ -202,16 +202,15 @@ def setup(cfg):
     
     # Select loss function
     loss_name = cfg.training.loss
-
     kwargs['loss'] = loss_name
-    if loss_name == 'elbo':
-        loss_fcn = lambda: elbo_loss(seds, mdn=mdn, flow=flow, **kwargs)
-    elif loss_name == 'iwbo':
-        loss_fcn = lambda: iwbo_loss(seds, mdn=mdn, flow=flow, **kwargs)
-    elif loss_name == 'favi':
-        loss_fcn = lambda: favi_loss(mdn=mdn, flow=flow, **kwargs)
-    else:
-        raise ValueError('Specify an appropriate loss name string.')
+    # if loss_name == 'elbo':
+    #     loss_fcn = lambda: elbo_loss(seds, mdn=mdn, flow=flow, **kwargs)
+    # elif loss_name == 'iwbo':
+    #     loss_fcn = lambda: iwbo_loss(seds, mdn=mdn, flow=flow, **kwargs)
+    # elif loss_name == 'favi':
+    #     loss_fcn = lambda: favi_loss(mdn=mdn, flow=flow, **kwargs)
+    # else:
+    #     raise ValueError('Specify an appropriate loss name string.')
     
     return (
         thetas,
@@ -225,6 +224,5 @@ def setup(cfg):
         logger_string,
         writer,
         optimizer,
-        loss_fcn,
         kwargs
     )
