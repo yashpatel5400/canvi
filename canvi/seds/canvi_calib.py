@@ -159,7 +159,7 @@ def main(cfg : DictConfig) -> None:
     final = final.set_axis(alphas.detach().numpy(), axis='index')
     final.rename(mapper=mapper, inplace=True, axis=1)
 
-    with open('./figs/lr={},K={},hpr_canvi.tex'.format(cfg.plots.lr, kwargs['K']),'w') as tf:
+    with open('./figs/lr={},K={},type={},hpr_canvi.tex'.format(cfg.plots.lr, kwargs['K'], cfg.encoder.type),'w') as tf:
         tf.write(final.to_latex())
 
 if __name__ == "__main__":
