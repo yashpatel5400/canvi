@@ -42,19 +42,19 @@ from setup import setup
 
 def loss_choice(loss_name, x, **kwargs):
     if loss_name == 'iwbo':
-        return iwbo_loss(x, mdn=False, flow=True, **kwargs)
+        return iwbo_loss(x, mdn=True, flow=False, **kwargs)
     elif loss_name == 'elbo':
-        return elbo_loss(x, mdn=False, flow=True, **kwargs)
+        return elbo_loss(x, mdn=True, flow=False, **kwargs)
     elif loss_name == 'favi':
-        return favi_loss(**kwargs)
+        return favi_loss(mdn=True, flow=False, **kwargs)
     else:
         raise ValueError('Specify an appropriate loss name string.')
 
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
-    # initialize(config_path=".", job_name="test_app")
-    # cfg = compose(config_name="config")
+    initialize(config_path=".", job_name="test_app")
+    cfg = compose(config_name="config")
     seed = cfg.seed
     torch.manual_seed(seed)
     random.seed(seed)

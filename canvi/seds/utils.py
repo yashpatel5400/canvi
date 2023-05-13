@@ -106,76 +106,7 @@ def gather_weights(**kwargs):
         its.append(items)
     return torch.stack(ws), torch.stack(lws), torch.stack(its)
     
-def reconstruct_smc_samplers(data, **kwargs):
-    weights, log_weights, items = gather_weights(**kwargs)
 
-    z_min = kwargs['z_min']
-    z_max = kwargs['z_max']
-    K = kwargs['K']
-    log_target = kwargs['log_target']
-    proposal = kwargs['proposal']
-
-    smc_samplers = []
-    for j in range(data.shape[0]):
-        sed = data[j]
-        particles = prior_t_sample(K, **kwargs)
-        particles = particles.unsqueeze(1)
-        init_log_weights = torch.zeros((K, 1))
-        init_weights = (nn.Softmax(0)(init_log_weights)).view(-1)
-        final_target_fcn = lambda z: log_t_prior(z, **kwargs)+log_target(z, sed, **kwargs)
-
-        SMC = LikelihoodTemperedSMC(particles, init_weights, init_log_weights, final_target_fcn, None, log_t_prior, log_target, proposal, max_mc_steps=100, context=sed, z_min=z_min, z_max=z_max, kwargs=kwargs)
-
-        SMC.sampler.current_ed.weights = weights[j]
-        SMC.sampler.current_ed.log_weights = log_weights[j].unsqueeze(1)
-        SMC.sampler.current_ed.items = items[j].unsqueeze(1)
-        smc_samplers.append(SMC)
-    return smc_samplers
-
-def construct_smc_samplers(data, **kwargs):
-    z_min = kwargs['z_min']
-    z_max = kwargs['z_max']
-    K = kwargs['K']
-    log_target = kwargs['log_target']
-    proposal = kwargs['proposal']
-
-    smc_samplers = []
-    for j in range(len(data)):
-        print("Working on observation {}".format(j))
-        sed = data[j]
-        particles = prior_t_sample(K, **kwargs)
-        particles = particles.unsqueeze(1)
-        init_log_weights = torch.zeros((K, 1))
-        init_weights = (nn.Softmax(0)(init_log_weights)).view(-1)
-        final_target_fcn = lambda z: log_t_prior(z, **kwargs)+log_target(z, sed, **kwargs)
-
-        SMC = LikelihoodTemperedSMC(particles, init_weights, init_log_weights, final_target_fcn, None, log_t_prior, log_target, proposal, max_mc_steps=100, context=sed, z_min=z_min, z_max=z_max, kwargs=kwargs)
-
-        SMC.run()
-        smc_samplers.append(SMC)
-
-    return smc_samplers
-
-def construct_one_smc_sampler(data, j, **kwargs):
-    z_min = kwargs['z_min']
-    z_max = kwargs['z_max']
-    K = kwargs['K']
-    log_target = kwargs['log_target']
-    proposal = kwargs['proposal']
-
-    print("Working on observation {}".format(j))
-    sed = data[j]
-    particles = prior_t_sample(K, **kwargs)
-    particles = particles.unsqueeze(1).float()
-    init_log_weights = torch.zeros((K, 1))
-    init_weights = (nn.Softmax(0)(init_log_weights)).view(-1)
-    final_target_fcn = lambda z: log_t_prior(z, **kwargs)+log_target(z, sed, **kwargs)
-
-    SMC = LikelihoodTemperedSMC(particles, init_weights, init_log_weights, final_target_fcn, None, log_t_prior, log_target, proposal, max_mc_steps=100, context=sed, z_min=z_min, z_max=z_max, kwargs=kwargs)
-
-    SMC.run()
-
-    return SMC
 
 
 

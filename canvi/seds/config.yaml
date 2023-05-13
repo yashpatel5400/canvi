@@ -30,7 +30,7 @@ training:
   loss: 'elbo'
 
 encoder:
-  type: 'flow'
+  type: 'mdn'
 
 smc:
   K: 1000

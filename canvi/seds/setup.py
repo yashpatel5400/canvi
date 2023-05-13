@@ -33,7 +33,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from cde.mdn import MixtureDensityNetwork
 from cde.nsf import build_nsf, EmbeddingNet
-from utils import resample, reconstruct_smc_samplers, construct_smc_samplers, prior_t_sample, log_t_prior, transform_thetas
+from utils import resample, prior_t_sample, log_t_prior, transform_thetas
 from losses import favi_loss, elbo_loss, iwbo_loss
 from generate import generate_data_emulator, generate_data
 from modules import TransformedFlatDirichlet, TransformedUniform, OurDesiMCMC, FAVIDataset, PROVABGSEmulator
@@ -60,50 +60,10 @@ def log_target(thetas, seds, **kwargs):
     diffs = means - seds
     real_noise = torch.abs(means)*multiplicative_noise+1e-8
     multiplier = -.5*real_noise**(-2)
-    results = torch.multiply(multiplier, torch.square(diffs)).sum(1)
+    results = torch.multiply(multiplier, torch.square(diffs)).sum(-1)
 
     return results.detach()
 
-def empirical_covariance(particles, weights):
-    return torch.cov(particles.T, aweights=weights)
-
-def mh_step(params, context, target_fcn, **kwargs):
-    z_min = kwargs['z_min']
-    z_max = kwargs['z_max']
-    z_to_use = params
-    #cov = empirical_covariance(z_to_use, weights)
-    #cov = .1*torch.eye(z_to_use.shape[-1]).float()
-    #proposed_particles = D.MultivariateNormal(z_to_use, cov).rsample().clamp(min=z_min, max=z_max)
-    proposed_particles = D.Normal(z_to_use, .1).sample().clamp(min=z_min, max=z_max).float()
-    lps_curr = torch.nan_to_num(target_fcn(z_to_use), -torch.inf)
-    lps_new = torch.nan_to_num(target_fcn(proposed_particles), -torch.inf)
-    lp_ratios = torch.nan_to_num(lps_new - lps_curr, -torch.inf)
-    lp_ratios = torch.exp(lp_ratios).clamp(min=0., max=1.)
-    flips = D.Bernoulli(lp_ratios).sample()
-    indices_old = torch.arange(len(flips))[flips == 0]
-    indices_new = torch.arange(len(flips))[flips == 1]
-    new = torch.empty(proposed_particles.shape).float()
-    new[indices_new] = proposed_particles[indices_new].float()
-    new[indices_old] = z_to_use[indices_old].float()
-    return new
-
-def proposal(params, context, target_fcn, **kwargs):
-    '''
-    Given a 'params' object of size N x c x ...,
-    where N is the number of particles, c is current number
-    of SMC steps, ... is remaining dimension.
-    
-    Returns propoal object q(z_{c+1} | z_{1:c})
-    
-    We propose using the current encoder q_\phi(z \mid x)
-    
-    We propose using most recent step z_{c-1} by random walk, i.e.
-    q(z_{c+1} | z_{1:c}) = N(z_c, \sigma)
-    '''
-    new = params
-    for _ in range(5):
-        new = mh_step(new, context, target_fcn, **kwargs)
-    return new
 
 def setup(cfg):
 
@@ -150,7 +110,6 @@ def setup(cfg):
         'scale': scale,
         'smooth_parameter': smooth_parameter,
         'log_target': log_target,
-        'proposal': proposal
     }
 
     # Generate data
@@ -163,11 +122,12 @@ def setup(cfg):
     kwargs['mb_size'] = mb_size
     kwargs['device'] = device
 
+    z_dim = fake_thetas.shape[-1]
+    x_dim = fake_seds.shape[-1]
+
     # Set up encoder
     if cfg.encoder.type == 'flow':
         # EXAMPLE BATCH FOR SHAPES
-        z_dim = fake_thetas.shape[-1]
-        x_dim = fake_seds.shape[-1]
         num_obs_flow = K*mb_size
         fake_zs = torch.randn((K*mb_size, z_dim))
         fake_xs = torch.randn((K*mb_size, x_dim))
@@ -178,8 +138,8 @@ def setup(cfg):
     else:
         raise ValueError('cfg.encoder.type must be one of "flow", "mdn"')
     
-    for p in encoder.parameters():
-        p.register_hook(lambda grad: torch.clamp(grad, -1e-2, 1e-2))
+    # for p in encoder.parameters():
+    #     p.register_hook(lambda grad: torch.clamp(grad, -1e-2, 1e-2))
     
     # Set up emulator 
     emulator = PROVABGSEmulator(dim_in=z_dim, dim_out=x_dim)
