@@ -63,3 +63,10 @@ def transform_parameters(theta, **kwargs):
         new[:,j] = my_t_priors[j].transform(theta[:,j])
     return new
 
+def transform_parameters_batch(theta, **kwargs):
+    my_t_priors = kwargs['my_t_priors']
+    new = torch.empty(theta.shape[0], theta.shape[1], 2)
+    for j in range(len(my_t_priors)):
+        new[...,j] = my_t_priors[j].transform(theta[...,j])
+    return new
+

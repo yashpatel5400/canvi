@@ -44,12 +44,12 @@ from generate import generate_data
 from losses import favi_loss, iwbo_loss, elbo_loss
 from scipy.integrate import quad
 from modules import TransformedUniform
-from utils import prior_t_sample, transform_parameters
+from utils import prior_t_sample, transform_parameters, transform_parameters_batch
 
 def log_target(particles, context, num_particles, **kwargs):
     T = kwargs['T']
     K = num_particles
-    params = transform_parameters(particles, **kwargs)
+    params = transform_parameters_batch(particles, **kwargs)
     theta1 = params[...,0]
     theta2 = params[...,1]
     eyes = torch.eye(T).repeat(K,1,1) #batch of Qs
@@ -61,7 +61,7 @@ def log_target(particles, context, num_particles, **kwargs):
     eps_vecs = torch.bmm(Qs, targets)
     eps_vecs = eps_vecs.squeeze(-1)
 
-    running_sum = torch.zeros(K)
+    running_sum = torch.zeros(1, K)
     for i in range(1, T):
         const = 1/torch.sqrt(2*math.pi*(.2+theta2*(eps_vecs[:,i-1]**2)))
         const = torch.log(const)
@@ -73,6 +73,12 @@ def log_target(particles, context, num_particles, **kwargs):
 def log_prior(particles, **kwargs):
     prior = kwargs['prior']
     theta = transform_parameters(particles, **kwargs)
+    lps = prior.log_prob(theta) #
+    return lps
+
+def log_prior_batch(particles, **kwargs):
+    prior = kwargs['prior']
+    theta = transform_parameters_batch(particles, **kwargs)
     lps = prior.log_prob(theta) #
     return lps
 
@@ -130,6 +136,7 @@ def setup(cfg):
         'K': K,
         'T': T,
         'log_prior': log_prior,
+        'log_prior_batch': log_prior_batch,
         'log_target': log_target,
         'proposal': proposal
     }

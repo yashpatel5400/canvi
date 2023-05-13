@@ -1,6 +1,6 @@
 import torch
 from generate import generate_data
-from utils import transform_parameters
+from utils import transform_parameters, transform_parameters_batch
 import torch.distributions as D
 import torch.nn as nn
 
@@ -10,19 +10,42 @@ def get_imp_weights(pts, num_samples, mdn=True, flow=False, log=False, prop_prio
     K = num_samples
     device = kwargs['device']
     log_target = kwargs['log_target']
-    log_prior = kwargs['log_prior']
+    log_prior_batch = kwargs['log_prior_batch']
 
-    particles, log_denoms = encoder.sample_and_log_prob(num_samples=K, context=pts.float().to(device))
-    particles = particles.reshape(K*mb_size, -1)
-    log_denoms = log_denoms.view(K,-1)
-    #repeated_pts = pts.repeat(K, 1, 1).reshape(K*mb_size, -1).to(device)
-    log_nums = log_prior(particles, **kwargs).reshape(K, mb_size).to(device) + log_target(particles, pts.to('cpu'), num_samples, **kwargs).reshape(K, mb_size).to(device)
+    particles = encoder.sample(K, pts.float().to(device))
+    rparticles = particles.reshape(K*mb_size, -1)
+    repeated_pts = pts.repeat(K, 1, 1).transpose(0,1)
+    repeated_pts = repeated_pts.reshape(K*mb_size, -1).to(device)
+    log_denoms = encoder.log_prob(rparticles, repeated_pts)
+    log_denoms = log_denoms.reshape(K, mb_size)
+    log_nums = log_prior_batch(particles, **kwargs).reshape(K, mb_size).to(device) + log_target(particles, pts.cpu(), K, **kwargs).reshape(K, mb_size).to(device)
+    #log_nums = log_target(particles, repeated_pts, **kwargs).reshape(K, mb_size)
     log_weights = log_nums - log_denoms
     weights = nn.Softmax(0)(log_weights)
     if log:
         return particles, weights, log_weights
     else:
         return particles, weights
+
+# def get_imp_weights(pts, num_samples, mdn=True, flow=False, log=False, prop_prior=0., **kwargs):
+#     mb_size = kwargs['mb_size']
+#     encoder = kwargs['encoder']
+#     K = num_samples
+#     device = kwargs['device']
+#     log_target = kwargs['log_target']
+#     log_prior = kwargs['log_prior']
+
+#     particles, log_denoms = encoder.sample_and_log_prob(num_samples=K, context=pts.float().to(device))
+#     particles = particles.reshape(K*mb_size, -1)
+#     log_denoms = log_denoms.view(K,-1)
+#     #repeated_pts = pts.repeat(K, 1, 1).reshape(K*mb_size, -1).to(device)
+#     log_nums = log_prior(particles, **kwargs).reshape(K, mb_size).to(device) + log_target(particles, pts.to('cpu'), num_samples, **kwargs).reshape(K, mb_size).to(device)
+#     log_weights = log_nums - log_denoms
+#     weights = nn.Softmax(0)(log_weights)
+#     if log:
+#         return particles, weights, log_weights
+#     else:
+#         return particles, weights
         
 def iwbo_loss(x, **kwargs):
     mb_size = kwargs['mb_size']
