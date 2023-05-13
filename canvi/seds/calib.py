@@ -86,8 +86,8 @@ def assess_calibration_hpr(thetas, x, logger_string, mdn=True, flow=False, n_sam
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
-    initialize(config_path=".", job_name="test_app")
-    cfg = compose(config_name="config")
+    # initialize(config_path=".", job_name="test_app")
+    # cfg = compose(config_name="config")
     seed = cfg.seed
     torch.manual_seed(seed)
     random.seed(seed)
@@ -95,8 +95,6 @@ def main(cfg : DictConfig) -> None:
 
     dir = cfg.dir
     os.chdir(dir)
-
-    cfg.training.lr=1e-5
 
     (
         thetas,

@@ -43,7 +43,14 @@ def assess_calibration_canvi(cal_scores, thetas, x, logger_string, n_samples=100
     device = kwargs['device']
 
     results = torch.zeros(alphas.shape[0]).to(device)
-    scores_at_truth = -1*encoder.log_prob(thetas, x.to(device))
+
+    log_pi, mu, sigma = encoder(x.to(device))
+    mix = D.Categorical(logits=log_pi)
+    comp = D.Independent(D.Normal(mu, sigma), 1)
+    mixture = D.MixtureSameFamily(mix, comp)
+
+    scores_at_truth = -1*mixture.log_prob(thetas)
+    #scores_at_truth = -1*encoder.log_prob(thetas, x.to(device))
 
     for j in range(alphas.shape[0]):
         alpha = alphas[j]
@@ -76,7 +83,6 @@ def main(cfg : DictConfig) -> None:
         mdn,
         flow,
         logger_string,
-        writer,
         optimizer,
         kwargs
     ) = setup(cfg)
@@ -120,15 +126,19 @@ def main(cfg : DictConfig) -> None:
 
     for loss in cfg.plots.losses:
         print('Working on {}'.format(loss))
-        logger_string = '{},{},{},{},noise={},mult={},smooth={}'.format(loss, 'flow', cfg.plots.lr, kwargs['K'], kwargs['noise'], kwargs['multiplicative_noise'], kwargs['smooth'])
-        encoder.load_state_dict(torch.load('weights/weights_{}'.format(logger_string)))
+        logger_string = '{},{},{},{},noise={},mult={},smooth={}'.format(loss, 'mdn', cfg.training.lr, kwargs['K'], kwargs['noise'], kwargs['multiplicative_noise'], kwargs['smooth'])
+        encoder.load_state_dict(torch.load('weights/{}.pth'.format(logger_string)))
         encoder = encoder.to(device)
         encoder.eval()
         kwargs['encoder'] = encoder
 
         # Calibration scores
         calibration_theta, calibration_x = generate_data_emulator(100000, return_theta=True, **kwargs)
-        lps = encoder.log_prob(calibration_theta, calibration_x).detach()
+        log_pi, mu, sigma = encoder(calibration_x.to(device))
+        mix = D.Categorical(logits=log_pi)
+        comp = D.Independent(D.Normal(mu, sigma), 1)
+        mixture = D.MixtureSameFamily(mix, comp)
+        lps = mixture.log_prob(calibration_theta).detach()
         cal_scores = -1*lps.reshape(-1)
 
         for j in range(10):
