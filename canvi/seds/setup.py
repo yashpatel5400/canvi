@@ -57,12 +57,10 @@ def log_target(thetas, seds, **kwargs):
     emulator = kwargs['emulator']
 
     means = emulator(thetas).clamp(min=0.)
-    diffs = means - seds
-    real_noise = torch.abs(means)*multiplicative_noise+1e-8
-    multiplier = -.5*real_noise**(-2)
-    results = torch.multiply(multiplier, torch.square(diffs)).sum(-1)
+    distr = D.Normal(means, multiplicative_noise*torch.abs(means)+1e-8)
+    results = distr.log_prob(seds).sum(-1)
 
-    return results.detach()
+    return results
 
 
 def setup(cfg):
