@@ -53,8 +53,8 @@ def loss_choice(loss_name, x, **kwargs):
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
-    initialize(config_path=".", job_name="test_app")
-    cfg = compose(config_name="config")
+    # initialize(config_path=".", job_name="test_app")
+    # cfg = compose(config_name="config")
     seed = cfg.seed
     torch.manual_seed(seed)
     random.seed(seed)

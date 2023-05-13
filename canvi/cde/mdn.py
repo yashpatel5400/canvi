@@ -69,7 +69,7 @@ class MixtureDensityNetwork(nn.Module):
         log_pi = torch.log_softmax(self.pi_network(x), dim=-1)
         normal_params = self.normal_network(x)
         mu = normal_params[..., :self.dim_out * self.n_components]
-        sigma = normal_params[..., self.dim_out * self.n_components:]
+        sigma = normal_params[..., self.dim_out * self.n_components:].clamp(-5., 5.)
         if self.noise_type is NoiseType.DIAGONAL:
             sigma = torch.exp(sigma + eps)
         if self.noise_type is NoiseType.ISOTROPIC:
