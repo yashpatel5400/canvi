@@ -61,16 +61,23 @@ def assess_calibration_hpr(thetas, x, logger_string, mdn=True, flow=False, n_sam
     encoder = kwargs['encoder']
     device = kwargs['device']
 
+
     results = torch.zeros(alphas.shape[0]).to(device)
-    particles, lps = encoder.sample_and_log_prob(n_samples, x.to(device))
+    log_pi, mu, sigma = encoder(x.to(device))
+    mix = D.Categorical(logits=log_pi)
+    comp = D.Independent(D.Normal(mu, sigma), 1)
+    mixture = D.MixtureSameFamily(mix, comp)
+    particles = mixture.sample((n_samples,))
+    lps = mixture.log_prob(particles)
+    #particles, lps = encoder.sample_and_log_prob(n_samples, x.to(device))
     scores = -1*lps
 
-    scores_at_truth = -1*encoder.log_prob(thetas, x.to(device))
+    scores_at_truth = -1*mixture.log_prob(thetas)
 
     for j in range(alphas.shape[0]):
         alpha = alphas[j]
         q = torch.tensor([1-alpha]).to(device)
-        quantiles = torch.quantile(scores, q, dim=1).reshape(-1)
+        quantiles = torch.quantile(scores, q, dim=0).reshape(-1)
         success = ((scores_at_truth < quantiles)).long().float()
         results[j] += success.mean(0)
 
@@ -79,8 +86,8 @@ def assess_calibration_hpr(thetas, x, logger_string, mdn=True, flow=False, n_sam
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
-    # initialize(config_path=".", job_name="test_app")
-    # cfg = compose(config_name="config")
+    initialize(config_path=".", job_name="test_app")
+    cfg = compose(config_name="config")
     seed = cfg.seed
     torch.manual_seed(seed)
     random.seed(seed)
@@ -88,6 +95,8 @@ def main(cfg : DictConfig) -> None:
 
     dir = cfg.dir
     os.chdir(dir)
+
+    cfg.training.lr=1e-5
 
     (
         thetas,
@@ -126,8 +135,8 @@ def main(cfg : DictConfig) -> None:
 
     for loss in cfg.plots.losses:
         print('Working on {}'.format(loss))
-        logger_string = '{},{},{},{},noise={},mult={},smooth={}'.format(loss, 'flow', cfg.plots.lr, kwargs['K'], kwargs['noise'], kwargs['multiplicative_noise'], kwargs['smooth'])
-        encoder.load_state_dict(torch.load('weights/weights_{}'.format(logger_string)))
+        logger_string = '{},{},{},{},noise={},mult={},smooth={}'.format(loss, 'mdn', cfg.training.lr, kwargs['K'], kwargs['noise'], kwargs['multiplicative_noise'], kwargs['smooth'])
+        encoder.load_state_dict(torch.load('weights/{}.pth'.format(logger_string)))
         encoder = encoder.to(device)
         encoder.eval()
         kwargs['encoder'] = encoder

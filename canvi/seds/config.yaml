@@ -23,7 +23,7 @@ data:
 training:
   use_from_pickle: True
   device: 'cuda:7'
-  epochs: 25000
+  epochs: 10000
   lr: 1e-4
   grad_clip: 1
   mb_size: 16
