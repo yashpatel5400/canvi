@@ -36,6 +36,7 @@ from losses import iwbo_loss, elbo_loss, favi_loss
 import hydra
 from hydra import compose, initialize
 from omegaconf import DictConfig
+from torch.utils.tensorboard import SummaryWriter
 import random
 from setup import setup
 
@@ -52,8 +53,8 @@ def loss_choice(loss_name, x, **kwargs):
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
-    initialize(config_path=".", job_name="test_app")
-    cfg = compose(config_name="config")
+    # initialize(config_path=".", job_name="test_app")
+    # cfg = compose(config_name="config")
     seed = cfg.seed
     torch.manual_seed(seed)
     random.seed(seed)
@@ -62,6 +63,7 @@ def main(cfg : DictConfig) -> None:
     dir = cfg.dir
     os.chdir(dir)
     cfg.smc.only=False
+    #cfg.training.device = 'cpu'
 
     (
         thetas,
@@ -73,26 +75,27 @@ def main(cfg : DictConfig) -> None:
         mdn,
         flow,
         logger_string,
-        writer,
         optimizer,
         kwargs
     ) = setup(cfg)
 
     loss_name = kwargs['loss']
     losses = []
+    writer = SummaryWriter('./logs/{}'.format(logger_string))
     for j in range(epochs):
         if j % 1000 == 0:
             print("On iteration {}".format(j))
         optimizer.zero_grad()
-        try:
-            loss = loss_choice(loss_name, seds, **kwargs)
-        except:
-            continue
+        loss = loss_choice(loss_name, seds, **kwargs)
+
         print('Loss iter {} is {}'.format(j, loss))
         if torch.isnan(loss).any():
             continue
         loss.backward()
         optimizer.step()
+
+        writer.add_scalar('Loss', loss.item(), j)
+
 
     torch.save(encoder.state_dict(), './weights/{}.pth'.format(logger_string))
 

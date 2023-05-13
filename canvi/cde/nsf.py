@@ -202,11 +202,7 @@ class EmbeddingNet(nn.Module):
         self.dense = nn.Sequential(
             nn.Linear(dim, 128),
             nn.ReLU(),
-            nn.Linear(128, 128),
-            nn.ReLU(),
-            nn.Linear(128, 128),
-            nn.ReLU(),
-            nn.Linear(128, 128),
+            nn.Linear(128, 32),
         )
 
 

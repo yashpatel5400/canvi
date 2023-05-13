@@ -27,11 +27,22 @@ def get_imp_weights(pts, num_samples, mdn=True, flow=False, log=False, prop_prio
         else:
             return mixture, particles, weights
     else:
-        particles, log_denoms = encoder.sample_and_log_prob(num_samples=K, context=pts.float().to(device))
+        #particles, log_denoms = encoder.sample_and_log_prob(num_samples=K, context=pts.float().to(device))
+        # particles, log_denoms = encoder.sample_and_log_prob(K, pts.float().to(device))
+        # particles = particles.reshape(K*mb_size, -1)
+        # repeated_pts = pts.repeat(K, 1, 1).reshape(K*mb_size, -1).to(device)
+        # # log_denoms = encoder.log_prob(particles, repeated_pts)
+        # log_denoms = log_denoms.view(K,-1)
+        # log_nums = log_t_prior(particles, **kwargs).reshape(K, mb_size).to(device) + log_target(particles, repeated_pts, **kwargs).reshape(K, mb_size)
+        # log_weights = log_nums - log_denoms
+        # weights = nn.Softmax(0)(log_weights)
+        particles = encoder.sample(K, pts.float().to(device))
         particles = particles.reshape(K*mb_size, -1)
-        log_denoms = log_denoms.view(K,-1)
         repeated_pts = pts.repeat(K, 1, 1).reshape(K*mb_size, -1).to(device)
+        log_denoms = encoder.log_prob(particles, repeated_pts)
+        log_denoms = log_denoms.view(K,-1)
         log_nums = log_t_prior(particles, **kwargs).reshape(K, mb_size).to(device) + log_target(particles, repeated_pts, **kwargs).reshape(K, mb_size)
+        #log_nums = log_target(particles, repeated_pts, **kwargs).reshape(K, mb_size)
         log_weights = log_nums - log_denoms
         weights = nn.Softmax(0)(log_weights)
         if log:

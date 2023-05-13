@@ -62,7 +62,7 @@ def log_target(thetas, seds, **kwargs):
     multiplier = -.5*real_noise**(-2)
     results = torch.multiply(multiplier, torch.square(diffs)).sum(1)
 
-    return results
+    return results.detach()
 
 def empirical_covariance(particles, weights):
     return torch.cov(particles.T, aweights=weights)
@@ -171,12 +171,15 @@ def setup(cfg):
         num_obs_flow = K*mb_size
         fake_zs = torch.randn((K*mb_size, z_dim))
         fake_xs = torch.randn((K*mb_size, x_dim))
-        encoder = build_nsf(fake_zs, fake_xs, z_score_x='structured', z_score_y='structured', hidden_features=128, embedding_net=EmbeddingNet(len(obs_grid)).float())
+        encoder = build_nsf(fake_zs, fake_xs, z_score_x='none', z_score_y='none', hidden_features=32, embedding_net=EmbeddingNet(len(obs_grid)).float())
         # encoder2.log_prob(particles.squeeze(1).float().to(device), pts.float().to(device).repeat(K,1))
     elif cfg.encoder.type == 'mdn':
         encoder = MixtureDensityNetwork(dim_in=len(obs_grid), dim_out=sum(sizes), n_components=20, hidden_dim=512)
     else:
         raise ValueError('cfg.encoder.type must be one of "flow", "mdn"')
+    
+    for p in encoder.parameters():
+        p.register_hook(lambda grad: torch.clamp(grad, -1e-2, 1e-2))
     
     # Set up emulator 
     emulator = PROVABGSEmulator(dim_in=z_dim, dim_out=x_dim)
@@ -196,7 +199,6 @@ def setup(cfg):
         mdn = True
         flow = False
     logger_string = '{},{},{},{},noise={},mult={},smooth={}'.format(cfg.training.loss, name, cfg.training.lr, K, noise,multiplicative_noise, smooth)
-    writer = SummaryWriter('logs/{}'.format(logger_string))
     encoder.to(device)
     optimizer = torch.optim.Adam(encoder.parameters(), lr=cfg.training.lr)
     
@@ -222,7 +224,6 @@ def setup(cfg):
         mdn,
         flow,
         logger_string,
-        writer,
         optimizer,
         kwargs
     )

@@ -99,7 +99,6 @@ def main(cfg : DictConfig) -> None:
         mdn,
         flow,
         logger_string,
-        writer,
         optimizer,
         kwargs
     ) = setup(cfg)
