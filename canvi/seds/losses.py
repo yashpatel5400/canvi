@@ -35,11 +35,12 @@ def get_imp_weights(pts, num_samples, mdn=True, flow=False, log=False, prop_prio
             return mixture, particles, weights
     else:
         particles = encoder.sample(K, pts.float().to(device))
-        particles = particles.reshape(K*mb_size, -1)
-        repeated_pts = pts.repeat(K, 1, 1).reshape(K*mb_size, -1).to(device)
-        log_denoms = encoder.log_prob(particles, repeated_pts)
-        log_denoms = log_denoms.view(K,-1)
-        log_nums = log_t_prior(particles, **kwargs).reshape(K, mb_size).to(device) + log_target(particles, repeated_pts, **kwargs).reshape(K, mb_size)
+        rparticles = particles.reshape(K*mb_size, -1)
+        repeated_pts = pts.repeat(K, 1, 1).transpose(0,1)
+        repeated_pts = repeated_pts.reshape(K*mb_size, -1).to(device)
+        log_denoms = encoder.log_prob(rparticles, repeated_pts)
+        log_denoms = log_denoms.reshape(K, mb_size)
+        log_nums = log_t_prior(particles, **kwargs).reshape(K, mb_size).to(device) + log_target(particles.transpose(0,1), pts, **kwargs).reshape(K, mb_size)
         #log_nums = log_target(particles, repeated_pts, **kwargs).reshape(K, mb_size)
         log_weights = log_nums - log_denoms
         weights = nn.Softmax(0)(log_weights)
