@@ -99,3 +99,28 @@ def favi_loss_mdn( **kwargs):
 
 
 
+def lebesgue(cal_scores, theta_batch, x_batch, alpha, **kwargs):
+    device = kwargs['device']
+    encoder = kwargs['encoder']
+    cal_scores = cal_scores.to(device)
+    theta1vals = torch.arange(-1., 1., .01)
+    theta2vals = torch.arange(0., 1., .01)
+    X, Y = torch.meshgrid(theta1vals, theta2vals)
+    eval_pts = torch.cartesian_prod(theta1vals, theta2vals).to(device)
+
+    # Get quantile
+    q = torch.tensor([1-alpha]).to(device)
+    quantiles = torch.quantile(cal_scores, q, dim=0)
+
+    areas = []
+    for j in range(x_batch.shape[0]):
+        all_lps = encoder.log_prob(eval_pts, x_batch[j].reshape(1,-1).repeat(eval_pts.shape[0], 1))
+        all_scores = -1*all_lps
+        in_region = (all_scores < quantiles[0]).long().float().sum()
+        area = in_region*(.01)*(.01)
+        areas.append(area.item())
+
+
+    return areas
+
+

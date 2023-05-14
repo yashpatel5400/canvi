@@ -40,7 +40,7 @@ import random
 from cde.mdn import MixtureDensityNetwork
 from cde.nsf import build_nsf, EmbeddingNet
 import torch.nn as nn
-from losses import favi_loss, iwbo_loss, elbo_loss
+from losses import favi_loss, iwbo_loss, elbo_loss, lebesgue
 from generate import generate_data
 from utils import transform_parameters
 from setup import setup
@@ -57,8 +57,8 @@ def loss_choice(loss_name, x, **kwargs):
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
-    initialize(config_path=".", job_name="test_app")
-    cfg = compose(config_name="config")
+    # initialize(config_path=".", job_name="test_app")
+    # cfg = compose(config_name="config")
     seed = cfg.seed
     torch.manual_seed(seed)
     random.seed(seed)
@@ -82,6 +82,8 @@ def main(cfg : DictConfig) -> None:
 
     loss_name = kwargs['loss']
     losses = []
+    mean_lebesgue = []
+    std_lebesgue = []
     for j in range(kwargs['epochs']):
         optimizer.zero_grad()
         loss = loss_choice(loss_name, true_x, **kwargs)
@@ -93,8 +95,24 @@ def main(cfg : DictConfig) -> None:
         losses.append(loss.item())
         del loss
 
+        # Log efficiency
+        calibration_theta, calibration_x = generate_data(20, **kwargs)
+        lps = encoder.log_prob(calibration_theta, calibration_x).detach()
+        cal_scores = -1*lps.reshape(-1)
+
+        areas = lebesgue(cal_scores, calibration_theta, calibration_x, .05, **kwargs)
+        mean_area = np.mean(np.array(areas))
+        std_area = np.std(np.array(areas))
+        mean_lebesgue.append(mean_area)
+        std_lebesgue.append(std_area)
+
+
     losses = np.array(losses)
-    np.save('./logs/{}.npy'.format(logger_string), losses)
+    np.save('./logs/{}loss.npy'.format(logger_string), losses)
+    mean_lebesgue = np.array(mean_lebesgue)
+    np.save('./logs/{}mean.npy'.format(logger_string), mean_lebesgue)
+    std_lebesgue = np.array(std_lebesgue)
+    np.save('./logs/{}std.npy'.format(logger_string), std_lebesgue)
     torch.save(encoder.state_dict(), './weights/{}.pth'.format(logger_string))
 
 if __name__ == "__main__":
