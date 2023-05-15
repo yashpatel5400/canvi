@@ -5,16 +5,16 @@ task_names = [
     "two_moons",
     "slcp",
     "gaussian_linear_uniform",
-    "bernoulli_glm",
+    # "bernoulli_glm",
     "gaussian_mixture",
     "gaussian_linear",
-    "slcp_distractors",
+    # "slcp_distractors",
     "bernoulli_glm_raw",
 ]
 
 server = libtmux.Server()
 
-cuda_gpus = [0,2,6]
+cuda_gpus = [5,6,7]
 for task_idx, task_name in enumerate(task_names):
     server.new_session(attach=False)
     session = server.sessions[-1]

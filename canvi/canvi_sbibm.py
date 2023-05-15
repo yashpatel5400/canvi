@@ -327,7 +327,7 @@ if __name__ == "__main__":
         theta_grid = torch.tensor(np.tile(single_theta, (test_sims, 1)), dtype=torch.float32).to(device)
         test_X_grid = torch.tensor(np.tile(test_x, (single_theta.shape[0], 1))).to(device)
 
-    save_iterate = 500
+    save_iterate = 100
 
     for j in range(5_001):
         theta, x = generate_data(prior, simulator, mb_size, return_theta=True)

@@ -5,6 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
+import argparse
 
 device = "cpu"
 
@@ -81,10 +82,17 @@ iterates = [0, 2000, 4000]
 fig, axs = plt.subplots(nrows=4, ncols=2, figsize=(24,24))
 sns.set_theme()
 
-for task_idx, task_name in enumerate(task_names):
+# for task_idx, task_name in enumerate(task_names):
+
+if __name__  == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--task")
+    args = parser.parse_args()
+    task_name = args.task
+
     for iterate_idx, iterate in enumerate(iterates):
         print(f"Plotting {task_name} -- iterate {iterate}")
-        ax = axs[task_idx // 2, task_idx % 2]
+        # ax = axs[task_idx // 2, task_idx % 2]
         
         task = sbibm.get_task(task_name)
         prior = task.get_prior_dist()
@@ -132,35 +140,37 @@ for task_idx, task_name in enumerate(task_names):
                 df["coverages"] = coverage_trial(encoder, test_thetas[i], test_xs[i])
                 print(f"Var Trial {i}")
                 df["var_coverages"] = var_coverage_trial(encoder, test_thetas[i], test_xs[i])
-                dfs.append(df)
+                df.to_csv(f'{task_name}_epoch={iterate}.csv', mode='a', header=False)
+
+                # dfs.append(df)
             except:
                 continue
-        df = pd.concat(dfs)
+        # df = pd.concat(dfs)
 
-        sns.lineplot(data=df, x="confidence", y="coverages", c=colors[iterate_idx], linestyle='--', ax=ax)
-        if task_idx == 0:
-            gfg = sns.lineplot(data=df, x="confidence", y="var_coverages", c=colors[iterate_idx], legend="full", label=f"Epoch {iterate}", ax=ax)
-            plt.setp(gfg.get_legend().get_texts(), fontsize='20') 
-        else:
-            sns.lineplot(data=df, x="confidence", y="var_coverages", c=colors[iterate_idx], ax=ax)
+#         sns.lineplot(data=df, x="confidence", y="coverages", c=colors[iterate_idx], linestyle='--', ax=ax)
+#         if task_idx == 0:
+#             gfg = sns.lineplot(data=df, x="confidence", y="var_coverages", c=colors[iterate_idx], legend="full", label=f"Epoch {iterate}", ax=ax)
+#             plt.setp(gfg.get_legend().get_texts(), fontsize='20') 
+#         else:
+#             sns.lineplot(data=df, x="confidence", y="var_coverages", c=colors[iterate_idx], ax=ax)
 
-        if iterate_idx == 0:
-            sns.lineplot(data=df, x="confidence", y="confidence", c="black", ax=ax)
+#         if iterate_idx == 0:
+#             sns.lineplot(data=df, x="confidence", y="confidence", c="black", ax=ax)
             
-        task_name_title = task_name_titles[task_idx]
-        ax.set_title(task_name_titles[task_idx], fontsize=24)
+#         task_name_title = task_name_titles[task_idx]
+#         ax.set_title(task_name_titles[task_idx], fontsize=24)
 
-        if task_idx // 2 != 3:
-            ax.set_xlabel("")
-        else:
-            ax.set_xlabel("Confidence",fontsize=20)
+#         if task_idx // 2 != 3:
+#             ax.set_xlabel("")
+#         else:
+#             ax.set_xlabel("Confidence",fontsize=20)
         
-        if task_idx % 2 == 1:
-            ax.set_ylabel("")
-        else:
-            ax.set_ylabel("Coverage",fontsize=20)
+#         if task_idx % 2 == 1:
+#             ax.set_ylabel("")
+#         else:
+#             ax.set_ylabel("Coverage",fontsize=20)
     
-plt.suptitle('Confidence vs. Coverage (SBI Benchmarks)', fontsize=28)
-plt.tight_layout()
-plt.subplots_adjust(top=0.94)
-plt.savefig(f"coverages/complete.png")
+# plt.suptitle('Confidence vs. Coverage (SBI Benchmarks)', fontsize=28)
+# plt.tight_layout()
+# plt.subplots_adjust(top=0.94)
+# plt.savefig(f"coverages/complete.png")
