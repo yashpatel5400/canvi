@@ -20,6 +20,6 @@ for task_idx, task_name in enumerate(task_names):
     session = server.sessions[-1]
     p = session.attached_pane
     p.send_keys("conda activate chig", enter=True)
-    cmd = f"CUDA_VISIBLE_DEVICES={cuda_gpus[task_idx % len(cuda_gpus)]} python canvi_sbibm.py --task {task_name}"
+    cmd = f"CUDA_VISIBLE_DEVICES={cuda_gpus[task_idx % len(cuda_gpus)]} python compute_set_sizes.py --task {task_name}"
     p.send_keys(cmd, enter=True)
     print(f"Launched: {cmd}")

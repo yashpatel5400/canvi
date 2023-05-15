@@ -258,7 +258,7 @@ def generate_data(prior, simulator, n_pts, return_theta=False):
     x = simulator(theta)
 
     if return_theta: 
-        return theta, x
+        return theta[...,:2], x
     else:
         return x
 
@@ -346,7 +346,7 @@ if __name__ == "__main__":
         print('Iteration {}: loss {}'.format(j, loss.item()))
 
         if j % save_iterate == 0:    
-            cached_fn = f"{args.task}_epoch={j}.nf"
+            cached_fn = f"{args.task}_marg_epoch={j}.nf"
             with open(cached_fn, "wb") as f:
                 pickle.dump(encoder, f)
     
