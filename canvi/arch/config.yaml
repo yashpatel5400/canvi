@@ -19,6 +19,7 @@ training:
   grad_clip: 1
   mb_size: 1
   loss: 'elbo'
+  log_eff: false
 
 encoder:
   type: 'flow'

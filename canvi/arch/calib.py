@@ -7,10 +7,6 @@ os.environ["NUMEXPR_NUM_THREADS"] = "4"  # export NUMEXPR_NUM_THREADS=1
 import sys
 sys.path.append("../")
 import numpy as np 
-from provabgs import util as UT
-from provabgs import infer as Infer
-from provabgs import models as Models
-from provabgs import flux_calib as FluxCalib
 # -- plotting -- 
 import matplotlib as mpl
 import matplotlib.pyplot as plt

@@ -70,9 +70,6 @@ def main(cfg : DictConfig) -> None:
     dir = cfg.dir
     os.chdir(dir)
 
-    cfg.smc.K = 67
-    cfg.training.mb_size = 1
-
     (true_theta, 
     true_x, 
     logger_string,
@@ -95,25 +92,27 @@ def main(cfg : DictConfig) -> None:
         losses.append(loss.item())
         del loss
 
-        # Log efficiency
-        calibration_theta, calibration_x = generate_data(20, **kwargs)
-        lps = encoder.log_prob(calibration_theta, calibration_x).detach()
-        cal_scores = -1*lps.reshape(-1)
+        if cfg.training.log_eff:
+            # Log efficiency
+            calibration_theta, calibration_x = generate_data(20, **kwargs)
+            lps = encoder.log_prob(calibration_theta, calibration_x).detach()
+            cal_scores = -1*lps.reshape(-1)
 
-        areas = lebesgue(cal_scores, calibration_theta, calibration_x, .05, **kwargs)
-        mean_area = np.mean(np.array(areas))
-        std_area = np.std(np.array(areas))
-        mean_lebesgue.append(mean_area)
-        std_lebesgue.append(std_area)
+            areas = lebesgue(cal_scores, calibration_theta, calibration_x, .05, **kwargs)
+            mean_area = np.mean(np.array(areas))
+            std_area = np.std(np.array(areas))
+            mean_lebesgue.append(mean_area)
+            std_lebesgue.append(std_area)
 
-
-    losses = np.array(losses)
-    np.save('./logs/{}loss.npy'.format(logger_string), losses)
-    mean_lebesgue = np.array(mean_lebesgue)
-    np.save('./logs/{}mean.npy'.format(logger_string), mean_lebesgue)
-    std_lebesgue = np.array(std_lebesgue)
-    np.save('./logs/{}std.npy'.format(logger_string), std_lebesgue)
-    torch.save(encoder.state_dict(), './weights/{}.pth'.format(logger_string))
+    if cfg.training.log_eff:
+        losses = np.array(losses)
+        np.save('./logs/{}loss.npy'.format(logger_string), losses)
+        mean_lebesgue = np.array(mean_lebesgue)
+        np.save('./logs/{}mean.npy'.format(logger_string), mean_lebesgue)
+        std_lebesgue = np.array(std_lebesgue)
+        np.save('./logs/{}std.npy'.format(logger_string), std_lebesgue)
+    else:
+        torch.save(encoder.state_dict(), './weights/{}.pth'.format(logger_string))
 
 if __name__ == "__main__":
     main() 
