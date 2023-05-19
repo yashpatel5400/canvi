@@ -258,7 +258,7 @@ def generate_data(prior, simulator, n_pts, return_theta=False):
     x = simulator(theta)
 
     if return_theta: 
-        return theta[...,:2], x
+        return theta, x
     else:
         return x
 

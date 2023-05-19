@@ -2,13 +2,21 @@
 import libtmux
 
 task_names = [
+    # "two_moons",
+    # "slcp",
+    # "gaussian_linear_uniform",
+    # "bernoulli_glm",
+    # "gaussian_mixture",
+    # "gaussian_linear",
+    # "slcp_distractors",
+    # "bernoulli_glm_raw",
+    # "lotka_volterra",
+    # "sir",
     "two_moons",
     "slcp",
     "gaussian_linear_uniform",
-    # "bernoulli_glm",
-    "gaussian_mixture",
-    "gaussian_linear",
-    # "slcp_distractors",
+    # "gaussian_mixture",
+    # "gaussian_linear",
     "bernoulli_glm_raw",
 ]
 

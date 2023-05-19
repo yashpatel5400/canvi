@@ -76,7 +76,7 @@ if __name__  == "__main__":
         mc_set_size_ests = []
         for test_x in test_xs:
             start = time.time() 
-            variational_dist_samples = 100
+            variational_dist_samples = 10_000
             empirical_theta_dist = encoder.sample((variational_dist_samples), test_x)
             sample_x = np.transpose(np.tile(test_x, (variational_dist_samples,1,1)), (1, 0, 2))
 

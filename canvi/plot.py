@@ -99,7 +99,7 @@ if __name__  == "__main__":
         simulator = task.get_simulator()   
 
         fn = f"{task_name}"
-        cached_fn = f"{task_name}_epoch={iterate}.nf"
+        cached_fn = f"{task_name}_marg_epoch={iterate}.nf"
         with open(cached_fn, "rb") as f:
             encoder = pickle.load(f)
         encoder.to(device)
