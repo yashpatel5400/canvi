@@ -48,11 +48,12 @@ from utils import prior_t_sample, transform_parameters, transform_parameters_bat
 
 def log_target(particles, context, num_particles, **kwargs):
     T = kwargs['T']
+    device = kwargs['device']
     K = num_particles
-    params = transform_parameters_batch(particles, **kwargs)
+    params = transform_parameters_batch(particles, **kwargs).to(device)
     theta1 = params[...,0]
     theta2 = params[...,1]
-    eyes = torch.eye(T).repeat(K,1,1) #batch of Qs
+    eyes = torch.eye(T).repeat(K,1,1).to(device) #batch of Qs
     repeated = -1*theta1.reshape(-1,1).repeat(1, T-1)
     subdiags = torch.diag_embed(repeated, -1)
     Qs = eyes + subdiags
@@ -61,10 +62,10 @@ def log_target(particles, context, num_particles, **kwargs):
     eps_vecs = torch.bmm(Qs, targets)
     eps_vecs = eps_vecs.squeeze(-1)
 
-    running_sum = torch.zeros(1, K)
+    running_sum = torch.zeros(1, K).to(device)
     for i in range(1, T):
         const = 1/torch.sqrt(2*math.pi*(.2+theta2*(eps_vecs[:,i-1]**2)))
-        const = torch.log(const)
+        const = torch.log(const).to(device)
         fact = -1*(eps_vecs[:,i]**2)/(2*(.2+theta2*eps_vecs[:,i-1]**2))
         running_sum += const
         running_sum += fact
@@ -82,42 +83,9 @@ def log_prior_batch(particles, **kwargs):
     lps = prior.log_prob(theta) #
     return lps
 
-def mh_step(params, context, target_fcn, **kwargs):
-    z_to_use = params
-    proposed_particles = D.Normal(z_to_use, .1).rsample()
-    lps_curr = torch.nan_to_num(target_fcn(z_to_use), -torch.inf)
-    lps_new = torch.nan_to_num(target_fcn(proposed_particles), -torch.inf)
-    lp_ratios = torch.nan_to_num(lps_new - lps_curr, -torch.inf)
-    lp_ratios = torch.exp(lp_ratios).clamp(min=0., max=1.)
-    flips = D.Bernoulli(lp_ratios).sample()
-    indices_old = torch.arange(len(flips))[flips == 0]
-    indices_new = torch.arange(len(flips))[flips == 1]
-    new = torch.empty(proposed_particles.shape)
-    new[indices_new] = proposed_particles[indices_new]
-    new[indices_old] = z_to_use[indices_old]
-    return new
-
-def proposal(params, context, target_fcn, **kwargs):
-    '''
-    Given a 'params' object of size N x c x ...,
-    where N is the number of particles, c is current number
-    of SMC steps, ... is remaining dimension.
-    
-    Returns propoal object q(z_{c+1} | z_{1:c})
-    
-    We propose using the current encoder q_\phi(z \mid x)
-    
-    We propose using most recent step z_{c-1} by random walk, i.e.
-    q(z_{c+1} | z_{1:c}) = N(z_c, \sigma)
-    '''
-    new = params
-    for _ in range(20):
-        new = mh_step(new, context, target_fcn, **kwargs)
-    return new
-
 def setup(cfg):
-    # initialize(config_path="../conf", job_name="test_app")
-    # cfg = compose(config_name="config5")
+    # initialize(config_path=".", job_name="test_app")
+    # cfg = compose(config_name="config")
     device = cfg.training.device
     prior = D.Independent(D.Uniform(torch.tensor([-1., 0.]), torch.tensor([1., 1.])), 1)
     my_t_priors = [
@@ -138,7 +106,7 @@ def setup(cfg):
         'log_prior': log_prior,
         'log_prior_batch': log_prior_batch,
         'log_target': log_target,
-        'proposal': proposal
+        'my_t_priors': my_t_priors
     }
 
     true_theta, true_x = generate_data(n_obs, **kwargs)

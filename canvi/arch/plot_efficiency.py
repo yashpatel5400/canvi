@@ -36,7 +36,7 @@ from cde.mdn import MixtureDensityNetwork
 from cde.nsf import build_nsf, EmbeddingNet
 import torch.nn as nn
 from scipy.signal import savgol_filter
-from generate import generate_data
+from generate import generate_data_favi
 from utils import posterior, normalizing_integral, transform_parameters
 from setup import setup
 from losses import lebesgue
@@ -48,29 +48,31 @@ def plot_eff():
     
     fig, ax = plt.subplots(figsize=(20,20))
     iwbo = np.load('./logs/iwbo,0.0001,10mean.npy')
-    fil_iwbo = savgol_filter(iwbo, 20, 3)
+    fil_iwbo = savgol_filter(iwbo, 10, 3)
     iwbo_err = np.load('./logs/iwbo,0.0001,10std.npy')
     lower_iwbo = iwbo-iwbo_err
     upper_iwbo = iwbo+iwbo_err
-    ax.plot(np.arange(len(iwbo)), fil_iwbo, c='r', label='IWBO')
+    ax.plot(np.arange(1,len(iwbo)+1)*500, fil_iwbo, c='r', label='IWBO')
     # ax[0].fill_between(np.arange(len(iwbo)), lower_iwbo, upper_iwbo)
-    ax.set_xlim(0,10000)
+    ax.set_xlim(0, len(iwbo)*500)
     ax.set_ylim(0,2)
 
     elbo = np.load('./logs/elbo,0.0001,10mean.npy')
     elbo_err = np.load('./logs/elbo,0.0001,10std.npy')
-    fil_elbo = savgol_filter(elbo,20,3)
+    fil_elbo = savgol_filter(elbo,10,3)
     lower_elbo = elbo-elbo_err
     upper_iwbo = elbo+elbo_err
-    ax.plot(np.arange(len(elbo)), fil_elbo, c='b', label='ELBO')
+    ax.plot(np.arange(1,len(iwbo)+1)*500, fil_elbo, c='b', label='ELBO')
     # ax[0].fill_between(np.arange(len(iwbo)), lower_iwbo, upper_iwbo)
 
     favi = np.load('./logs/favi,0.0001,10mean.npy')
     favi_err = np.load('./logs/favi,0.0001,10std.npy')
-    fil_favi = savgol_filter(favi,20,3)
+    fil_favi = savgol_filter(favi,10,3)
     lower_favi = favi-favi_err
     upper_favi = favi+favi_err
-    ax.plot(np.arange(len(favi)), fil_favi, c='g', label='FAVI')
+    ax.plot(np.arange(1,len(iwbo)+1)*500, fil_favi, c='g', label='FAVI')
+    ax.set_ylabel('Efficiency')
+    ax.set_xlabel('Training Step')
     # ax[0].fill_between(np.arange(len(iwbo)), lower_iwbo, upper_iwbo)
     plt.legend(loc="lower left")
     plt.savefig("./figs/eff.png")
@@ -79,8 +81,8 @@ def plot_eff():
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
-    initialize(config_path=".", job_name="test_app")
-    cfg = compose(config_name="config")
+    # initialize(config_path=".", job_name="test_app")
+    # cfg = compose(config_name="config")
     seed = cfg.seed
     torch.manual_seed(seed)
     random.seed(seed)
@@ -97,18 +99,22 @@ def main(cfg : DictConfig) -> None:
     optimizer,
     kwargs) = setup(cfg)
 
+    device = 'cpu'
+    kwargs['device'] = device
+
     plot_eff()
     final_effs = {}
 
     # IWBO
     encoder.load_state_dict(torch.load('./weights/iwbo,0.0001,10.pth'))
-    calibration_theta, calibration_x = generate_data(1000, **kwargs)
+    encoder = encoder.to(device)
+    calibration_theta, calibration_x = generate_data_favi(1000, **kwargs)
     lps = encoder.log_prob(calibration_theta, calibration_x).detach()
     cal_scores = -1*lps.reshape(-1)
     iwbo_effs = []
     alphas = [.05]
-    for _ in range(10):
-        fresh_theta, fresh_x = generate_data(1000, **kwargs)
+    for _ in range(1):
+        fresh_theta, fresh_x = generate_data_favi(1000, **kwargs)
         this_eff = [lebesgue(cal_scores, fresh_theta, fresh_x, alpha, **kwargs) for alpha in alphas]
         iwbo_effs.append(this_eff)
     iwbo_effs = np.stack(iwbo_effs).mean(-1)
@@ -116,12 +122,13 @@ def main(cfg : DictConfig) -> None:
 
     # ELBO
     encoder.load_state_dict(torch.load('./weights/elbo,0.0001,10.pth'))
-    calibration_theta, calibration_x = generate_data(1000, **kwargs)
+    encoder = encoder.to(device)
+    calibration_theta, calibration_x = generate_data_favi(1000, **kwargs)
     lps = encoder.log_prob(calibration_theta, calibration_x).detach()
     cal_scores = -1*lps.reshape(-1)
     elbo_effs = []
     for _ in range(1):
-        fresh_theta, fresh_x = generate_data(1000, **kwargs)
+        fresh_theta, fresh_x = generate_data_favi(1000, **kwargs)
         this_eff = [lebesgue(cal_scores, fresh_theta, fresh_x, alpha, **kwargs) for alpha in alphas]
         elbo_effs.append(this_eff)
     elbo_effs = np.stack(elbo_effs).mean(-1)
@@ -129,12 +136,13 @@ def main(cfg : DictConfig) -> None:
 
     # FAVI
     encoder.load_state_dict(torch.load('./weights/favi,0.0001,10.pth'))
-    calibration_theta, calibration_x = generate_data(1000, **kwargs)
+    encoder = encoder.to(device)
+    calibration_theta, calibration_x = generate_data_favi(1000, **kwargs)
     lps = encoder.log_prob(calibration_theta, calibration_x).detach()
     cal_scores = -1*lps.reshape(-1)
     favi_effs = []
     for _ in range(1):
-        fresh_theta, fresh_x = generate_data(1000, **kwargs)
+        fresh_theta, fresh_x = generate_data_favi(1000, **kwargs)
         this_eff = [lebesgue(cal_scores, fresh_theta, fresh_x, alpha, **kwargs) for alpha in alphas]
         favi_effs.append(this_eff)
     favi_effs = np.stack(favi_effs).mean(-1)

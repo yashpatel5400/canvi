@@ -47,50 +47,9 @@ from generate import generate_data
 from utils import posterior, normalizing_integral, transform_parameters
 from setup import setup
 
-
-# def assess_calibration(thetas, x, n_samples=1000, alpha=.05, **kwargs):
-#     device = kwargs['device']
-#     encoder = kwargs['encoder']
-
-#     results = torch.zeros_like(thetas[0])
-#     for j in range(x.shape[0]):
-#         true_param = thetas[j]
-#         observation = x[j]
-#         particles, log_denoms = encoder.sample_and_log_prob(num_samples=n_samples, context=x[j].view(1,-1).float().to(device))
-#         particles = particles.reshape(n_samples, -1)
-#         q = torch.tensor([alpha/2, 1-alpha/2]).to(device)
-#         quantiles = torch.quantile(particles, q, dim=0)
-#         success = ((true_param > quantiles[0]) & (true_param < quantiles[1])).long()
-#         results += success
-
-#     return results/x.shape[0]
-
-# def assess_calibration(thetas, x, n_samples=1000, alpha=.05, **kwargs):
-#     device = kwargs['device']
-#     encoder = kwargs['encoder']
-
-#     results = torch.zeros_like(thetas[0])
-#     for j in range(x.shape[0]):
-#         true_param = thetas[j]
-#         observation = x[j]
-
-#         log_pi, mu, sigma = encoder(observation.view(1,-1).to(device))
-#         mix = D.Categorical(logits=log_pi)
-#         comp = D.Independent(D.Normal(mu, sigma), 1)
-#         mixture = D.MixtureSameFamily(mix, comp)
-#         particles = mixture.sample((10000,))
-#         particles = particles.reshape(10000, -1)
-
-#         q = torch.tensor([alpha/2, 1-alpha/2]).to(device)
-#         quantiles = torch.quantile(particles, q, dim=0)
-#         success = ((true_param > quantiles[0]) & (true_param < quantiles[1])).long()
-#         results += success
-
-#     return results/x.shape[0]
-
-
 def plot(index, true_theta, true_x, encoder, **kwargs):
     device = kwargs['device']
+    my_t_priors = kwargs['my_t_priors']
     plt.rcParams.update({'font.size': 22})
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(30,15))
 
@@ -113,10 +72,13 @@ def plot(index, true_theta, true_x, encoder, **kwargs):
     ax[0].set_title('Exact Posterior - Observation {}'.format(index))
     
     # Flow posterior
-    vals1normal = torch.arange(-1., 1., .01)
-    vals2normal = torch.arange(0., 1., .01)
+    vals1normal = torch.arange(-1.+.01, 1., .01)
+    vals2normal = torch.arange(0.+.01, 1., .01)
     eval_pts_normal = torch.cartesian_prod(vals1normal, vals2normal)
-    lps = encoder.log_prob(eval_pts_normal.to(device), true_x[index].view(1,-1).repeat(eval_pts_normal.shape[0],1).to(device)).detach()
+    eval_pts_uncon = torch.empty(eval_pts_normal.shape)
+    eval_pts_uncon[:,0] = my_t_priors[0].inv_transform(eval_pts_normal[:,0])
+    eval_pts_uncon[:,1] = my_t_priors[1].inv_transform(eval_pts_normal[:,1])
+    lps = encoder.log_prob(eval_pts_uncon.to(device), true_x[index].view(1,-1).repeat(eval_pts_normal.shape[0],1).to(device)).detach()
     X, Y = torch.meshgrid(vals1normal, vals2normal)
     Z = lps.view(X.shape)
     ax[1].pcolormesh(X.cpu().numpy(), Y.cpu().numpy(), Z.cpu().exp().numpy())

@@ -32,6 +32,7 @@ import hydra
 from hydra import compose, initialize
 from omegaconf import DictConfig
 import random
+from utils import prior_t_sample, transform_parameters, transform_parameters_batch
 from cde.mdn import MixtureDensityNetwork
 from cde.nsf import build_nsf, EmbeddingNet
 import torch.nn as nn
@@ -57,3 +58,26 @@ def generate_data(n_obs, innov=None, **kwargs):
         ys[:,i] = yi
         es[:,i] = ei
     return thetas, ys
+
+def generate_data_favi(n_obs, innov=None, **kwargs):
+    T = kwargs['T']
+    device = kwargs['device']
+
+    unconstained_thetas = prior_t_sample(n_obs, **kwargs)
+    constrained_thetas = transform_parameters(unconstained_thetas, **kwargs)
+    thetas = constrained_thetas.to(device)
+    theta1 = thetas[:,0]
+    theta2 = thetas[:,1]
+
+    ys = torch.empty((n_obs, T)).to(device)
+    es = torch.empty((n_obs, T)).to(device)
+    noise = D.Normal(0., 1.)
+    innovations = noise.sample((n_obs,T)).to(device) if not innov else innov.to(device)
+    ys[:,0] = 0.
+    es[:,0] = 0.#innovations[:,0]
+    for i in range(1,T):
+        ei = innovations[:,i]*torch.sqrt(.2+theta2*(es[:,i-1]**2))
+        yi = theta1*ys[:,i-1]+ei
+        ys[:,i] = yi
+        es[:,i] = ei
+    return unconstained_thetas.to(device), ys

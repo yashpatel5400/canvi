@@ -43,7 +43,7 @@ import random
 from cde.mdn import MixtureDensityNetwork
 from cde.nsf import build_nsf, EmbeddingNet
 import torch.nn as nn
-from generate import generate_data
+from generate import generate_data_favi
 from utils import posterior, normalizing_integral, transform_parameters
 from setup import setup
 
@@ -52,6 +52,7 @@ def plot_before_after_canvi(cal_scores, j, thetas, x, encoder, n_samples=10000, 
     plt.rcParams.update({'font.size': 22})
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(30,15))
     device = kwargs['device']
+    my_t_priors = kwargs['my_t_priors']
     theta1vals = torch.arange(-1., 1., .01)
     theta2vals = torch.arange(0., 1., .01)
     data = x[j]
@@ -65,7 +66,10 @@ def plot_before_after_canvi(cal_scores, j, thetas, x, encoder, n_samples=10000, 
     quantiles = torch.quantile(scores, q, dim=0)
 
     eval_pts = torch.cartesian_prod(theta1vals, theta2vals)
-    lps = encoder.log_prob(eval_pts.to(device),data.view(1,-1).repeat(eval_pts.shape[0], 1).to(device))
+    eval_pts_uncon = torch.empty(eval_pts.shape)
+    eval_pts_uncon[:,0] = my_t_priors[0].inv_transform(eval_pts[:,0])
+    eval_pts_uncon[:,1] = my_t_priors[1].inv_transform(eval_pts[:,1])
+    lps = encoder.log_prob(eval_pts_uncon.to(device),data.view(1,-1).repeat(eval_pts_uncon.shape[0], 1).to(device))
     scores = -1*lps
     in_region = (scores < quantiles[0]).long()
     in_region = in_region.reshape(X.shape).cpu().numpy()
@@ -87,61 +91,6 @@ def plot_before_after_canvi(cal_scores, j, thetas, x, encoder, n_samples=10000, 
     plt.savefig('./figs/{}_{}_{}canvi.png'.format(j, kwargs['loss'], alpha))
     plt.clf()
 
-
-
-
-# def plot_hpr_calib(cal_scores, j, thetas, x, logger_string, mdn=True, flow=False, n_samples=10000, alpha=.05, **kwargs):
-#     assert not (mdn and flow), "One of mdn or flow flags must be false."
-#     encoder = kwargs['encoder']
-#     device = kwargs['device']
-#     theta1vals = torch.arange(-1., 1., .01)
-#     theta2vals = torch.arange(0., 1., .01)
-#     data = x[j]
-#     X, Y = torch.meshgrid(theta1vals, theta2vals)
-#     Z = torch.empty(X.shape)
-
-#     # Get quantile
-#     q = torch.tensor([1-alpha])
-#     quantiles = torch.quantile(cal_scores, q, dim=0)
-
-#     eval_pts = torch.cartesian_prod(theta1vals, theta2vals)
-#     lps = encoder.log_prob(eval_pts.to(device),data.view(1,-1).repeat(eval_pts.shape[0], 1).to(device))
-#     scores = -1*lps
-#     in_region = (scores < quantiles[0]).long()
-#     in_region = in_region.reshape(X.shape).cpu().numpy()
-
-#     fig, ax = plt.subplots(figsize=(10,10))
-#     ax.pcolormesh(X.cpu().numpy(), Y.cpu().numpy(), in_region)
-#     ax.set_title('Approximate Posterior Flow')
-
-# def plot_hpr(j, thetas, x, logger_string, mdn=True, flow=False, n_samples=10000, alpha=.05, **kwargs):
-#     assert not (mdn and flow), "One of mdn or flow flags must be false."
-#     encoder = kwargs['encoder']
-#     device = kwargs['device']
-#     theta1vals = torch.arange(-1., 1., .01)
-#     theta2vals = torch.arange(0., 1., .01)
-#     data = x[j]
-#     X, Y = torch.meshgrid(theta1vals, theta2vals)
-#     Z = torch.empty(X.shape)
-
-#     # Get quantile
-#     particles, lps = encoder.sample_and_log_prob(num_samples=n_samples, context=data.view(1,-1).to(device))
-#     scores = 1/(lps.exp())
-#     scores = scores.reshape(-1)
-#     q = torch.tensor([1-alpha]).to(device)
-#     quantiles = torch.quantile(scores, q, dim=0)
-
-
-#     eval_pts = torch.cartesian_prod(theta1vals, theta2vals)
-#     lps = encoder.log_prob(eval_pts.to(device),data.view(1,-1).repeat(eval_pts.shape[0], 1).to(device))
-#     scores = 1/(lps.exp())
-#     in_region = (scores < quantiles[0]).long()
-#     in_region = in_region.reshape(X.shape).cpu().numpy()
-
-#     fig, ax = plt.subplots(figsize=(10,10))
-#     ax.pcolormesh(X.cpu().numpy(), Y.cpu().numpy(), in_region)
-#     ax.set_title('Approximate Posterior Flow')
-
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:
     # initialize(config_path=".", job_name="test_app")
@@ -162,14 +111,17 @@ def main(cfg : DictConfig) -> None:
     optimizer,
     kwargs) = setup(cfg)
 
+    device = 'cpu'
+    kwargs['device'] = device
     kwargs.pop('encoder')
 
     encoder.load_state_dict(torch.load('./weights/{}.pth'.format(logger_string)))
     encoder.eval()
+    encoder = encoder.to(device)
     # device = kwargs['device']
 
     # Calibration scores
-    calibration_theta, calibration_x = generate_data(100000, **kwargs)
+    calibration_theta, calibration_x = generate_data_favi(100000, **kwargs)
     lps = encoder.log_prob(calibration_theta, calibration_x).detach()
     cal_scores = -1*lps.reshape(-1)
 

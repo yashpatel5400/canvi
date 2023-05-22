@@ -41,7 +41,7 @@ from cde.mdn import MixtureDensityNetwork
 from cde.nsf import build_nsf, EmbeddingNet
 import torch.nn as nn
 from losses import favi_loss, iwbo_loss, elbo_loss, lebesgue
-from generate import generate_data
+from generate import generate_data_favi
 from utils import transform_parameters
 from setup import setup
 
@@ -92,12 +92,13 @@ def main(cfg : DictConfig) -> None:
         losses.append(loss.item())
         del loss
 
-        if cfg.training.log_eff:
+        if (cfg.training.log_eff) and (((j+1) % 500) == 0):
             # Log efficiency
-            calibration_theta, calibration_x = generate_data(20, **kwargs)
+            calibration_theta, calibration_x = generate_data_favi(20, **kwargs)
             lps = encoder.log_prob(calibration_theta, calibration_x).detach()
             cal_scores = -1*lps.reshape(-1)
 
+            calibration_theta, calibration_x = generate_data_favi(20, **kwargs)
             areas = lebesgue(cal_scores, calibration_theta, calibration_x, .05, **kwargs)
             mean_area = np.mean(np.array(areas))
             std_area = np.std(np.array(areas))
@@ -111,8 +112,8 @@ def main(cfg : DictConfig) -> None:
         np.save('./logs/{}mean.npy'.format(logger_string), mean_lebesgue)
         std_lebesgue = np.array(std_lebesgue)
         np.save('./logs/{}std.npy'.format(logger_string), std_lebesgue)
-    else:
-        torch.save(encoder.state_dict(), './weights/{}.pth'.format(logger_string))
+ 
+    torch.save(encoder.state_dict(), './weights/{}.pth'.format(logger_string))
 
 if __name__ == "__main__":
     main() 
