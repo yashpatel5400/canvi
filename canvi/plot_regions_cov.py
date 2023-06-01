@@ -10,6 +10,21 @@ import seaborn as sns
 import pickle
 import argparse
 
+plt.rcParams['mathtext.fontset'] = 'stix'
+plt.rcParams['font.family'] = 'STIXGeneral'
+
+SMALL_SIZE = 12
+MEDIUM_SIZE = 14
+BIGGER_SIZE = 18
+
+plt.rc('font', size=BIGGER_SIZE)          # controls default text sizes
+plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
+plt.rc('xtick', labelsize=BIGGER_SIZE)    # fontsize of the tick labels
+plt.rc('ytick', labelsize=BIGGER_SIZE)    # fontsize of the tick labels
+plt.rc('legend', fontsize=BIGGER_SIZE)    # legend fontsize
+plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
 task_name = "two_moons"
 
 device = "cpu"
@@ -40,7 +55,7 @@ for trial in range(trials):
 
     K = 4
     kmeans = KMeans(n_clusters=K, random_state=0, n_init="auto").fit(calibration_x)
-
+    
     radii = []
     for k in range(K):
         dists = np.linalg.norm(kmeans.cluster_centers_[k] - kmeans.cluster_centers_, axis=1) / 2
@@ -54,28 +69,46 @@ for trial in range(trials):
 
         cal_dists = np.linalg.norm(calibration_x - kmeans.cluster_centers_[k], axis=1)
         cal_labels[cal_dists < radii[k]] = k
-
-    plt.scatter(test_x[:,0],test_x[:,1],c=test_labels.astype(float))
-    plt.scatter(kmeans.cluster_centers_[:,0],kmeans.cluster_centers_[:,1],c="r")
-    plt.xlim(-2.0, 1.0)
-    plt.ylim(-1.5, 1.5)
-
+    
     cal_scores = 1 / encoder.log_prob(calibration_theta.to(device), calibration_x.to(device)).detach().cpu().exp().numpy()
-    desired_coverage = 0.95
-    conformal_quantile = np.quantile(cal_scores, q = desired_coverage)
-    probs = encoder.log_prob(test_theta.to(device), test_x.to(device)).detach().cpu().exp().numpy()
+    
+    desired_coverages = np.arange(0.75, 0.9, 0.05)
+    overall_covs = []
+    specific_covs = []
 
-    label_overall_covs = test_labels.copy().astype(float)
-    label_specific_covs = test_labels.copy().astype(float)
+    fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(24,12))
+    
+    for desired_coverage in desired_coverages:
+        print(f"Calibrating: {desired_coverage}")
+        conformal_quantile = np.quantile(cal_scores, q = desired_coverage)
+        probs = encoder.log_prob(test_theta.to(device), test_x.to(device)).detach().cpu().exp().numpy()
+
+        overall_covs_per_cov = []
+        specific_covs_per_cov = []
+
+        for k in range(K):
+            covered_overall_quantile = (1 / probs[test_labels == k]) < conformal_quantile
+            # label_overall_covs[test_labels == k] = np.sum(covered_overall_quantile) / len(covered_overall_quantile)
+
+            conformal_quantile_k = np.quantile(cal_scores[cal_labels == k], q = desired_coverage)
+            covered_specific_quantile = (1 / probs[test_labels == k]) < conformal_quantile_k
+            # label_specific_covs[test_labels == k] = np.sum(covered_specific_quantile) / len(covered_specific_quantile)
+            # print(f"{k} -> {len(cal_scores[cal_labels == k])}")
+            
+            overall_covs_per_cov.append(np.sum(covered_overall_quantile) / len(covered_overall_quantile))
+            specific_covs_per_cov.append(np.sum(covered_specific_quantile) / len(covered_specific_quantile))
+        overall_covs.append(overall_covs_per_cov)
+        specific_covs.append(specific_covs_per_cov)
+
+    overall_covs = np.array(overall_covs).T # shape: K x len(desired_coverages)
+    specific_covs = np.array(specific_covs).T
 
     for k in range(K):
-        covered_overall_quantile = (1 / probs[test_labels == k]) < conformal_quantile
-        label_overall_covs[test_labels == k] = np.sum(covered_overall_quantile) / len(covered_overall_quantile)
-
-        conformal_quantile_k = np.quantile(cal_scores[cal_labels == k], q = desired_coverage)
-        covered_specific_quantile = (1 / probs[test_labels == k]) < conformal_quantile_k
-        label_specific_covs[test_labels == k] = np.sum(covered_specific_quantile) / len(covered_specific_quantile)
-        print(f"{k} -> {len(cal_scores[cal_labels == k])}")
-
-    print(f"Overall: {np.unique(label_overall_covs)[1:]}")
-    print(f"Specific: {np.unique(label_specific_covs)[1:]}")
+        axs[0].set_title("Overall Quantile", fontsize=24)
+        sns.lineplot(x=desired_coverages, y=overall_covs[k], ax=axs[0])
+        
+        axs[1].set_title("Specific Quantile", fontsize=24)
+        sns.lineplot(x=desired_coverages, y=specific_covs[k], ax=axs[1])
+    plt.savefig("coverage.png")
+    # print(f"Overall: {np.unique(label_overall_covs)[1:]}")
+    # print(f"Specific: {np.unique(label_specific_covs)[1:]}")
