@@ -37,7 +37,7 @@ encoder.to(device)
 overall_covs = []
 specific_covs = []
 
-trials = 5
+trials = 1
 for trial in range(trials):
     task = sbibm.get_task(task_name)
     prior = task.get_prior_dist()
@@ -64,51 +64,60 @@ for trial in range(trials):
     cal_labels = np.ones(calibration_x.shape[0]) * -1
     test_labels = np.ones(test_x.shape[0]) * -1
     for k in range(K):
-        dists = np.linalg.norm(test_x - kmeans.cluster_centers_[k], axis=1)
-        test_labels[dists < radii[k]] = k
+        test_dists = np.linalg.norm(test_x - kmeans.cluster_centers_[k], axis=1)
+        test_labels[test_dists < radii[k]] = k
 
         cal_dists = np.linalg.norm(calibration_x - kmeans.cluster_centers_[k], axis=1)
         cal_labels[cal_dists < radii[k]] = k
     
     cal_scores = 1 / encoder.log_prob(calibration_theta.to(device), calibration_x.to(device)).detach().cpu().exp().numpy()
+    test_scores = 1 / encoder.log_prob(test_theta.to(device), test_x.to(device)).detach().cpu().exp().numpy()
     
-    desired_coverages = np.arange(0.75, 0.9, 0.05)
+    desired_coverages = np.arange(0.10, 1.0, 0.05)
+    overall_quantiles = [np.quantile(cal_scores, q = desired_coverage) for desired_coverage in desired_coverages]
+    
     overall_covs = []
     specific_covs = []
 
     fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(24,12))
     
-    for desired_coverage in desired_coverages:
-        print(f"Calibrating: {desired_coverage}")
-        conformal_quantile = np.quantile(cal_scores, q = desired_coverage)
-        probs = encoder.log_prob(test_theta.to(device), test_x.to(device)).detach().cpu().exp().numpy()
-
-        overall_covs_per_cov = []
-        specific_covs_per_cov = []
-
-        for k in range(K):
-            covered_overall_quantile = (1 / probs[test_labels == k]) < conformal_quantile
-            # label_overall_covs[test_labels == k] = np.sum(covered_overall_quantile) / len(covered_overall_quantile)
-
-            conformal_quantile_k = np.quantile(cal_scores[cal_labels == k], q = desired_coverage)
-            covered_specific_quantile = (1 / probs[test_labels == k]) < conformal_quantile_k
-            # label_specific_covs[test_labels == k] = np.sum(covered_specific_quantile) / len(covered_specific_quantile)
-            # print(f"{k} -> {len(cal_scores[cal_labels == k])}")
-            
-            overall_covs_per_cov.append(np.sum(covered_overall_quantile) / len(covered_overall_quantile))
-            specific_covs_per_cov.append(np.sum(covered_specific_quantile) / len(covered_specific_quantile))
-        overall_covs.append(overall_covs_per_cov)
-        specific_covs.append(specific_covs_per_cov)
-
-    overall_covs = np.array(overall_covs).T # shape: K x len(desired_coverages)
-    specific_covs = np.array(specific_covs).T
-
+    overall_coverages_dfs = []
+    specific_coverages_dfs = []
     for k in range(K):
-        axs[0].set_title("Overall Quantile", fontsize=24)
-        sns.lineplot(x=desired_coverages, y=overall_covs[k], ax=axs[0])
+        print(f"Computing coverage for region: {k}")
+        overall_coverages_df = pd.DataFrame(columns=["k", "confidence", "coverage"])
+        overall_coverages_df["confidence"] = desired_coverages
+        overall_coverages_df["k"] = k
+        specific_coverages_df = overall_coverages_df.copy()
         
-        axs[1].set_title("Specific Quantile", fontsize=24)
-        sns.lineplot(x=desired_coverages, y=specific_covs[k], ax=axs[1])
+        specific_quantiles = [np.quantile(cal_scores[cal_labels == k], q = desired_coverage) for desired_coverage in desired_coverages]
+        
+        overall_coverages = []
+        specific_coverages = []
+        for i, desired_coverage in enumerate(desired_coverages):
+            test_region_scores = test_scores[test_labels == k]
+            covered_overall_quantile = test_region_scores < overall_quantiles[i]
+            covered_specific_quantile = test_region_scores < specific_quantiles[i]
+
+            overall_coverages.append(np.sum(covered_overall_quantile) / len(test_region_scores))
+            specific_coverages.append(np.sum(covered_specific_quantile) / len(test_region_scores))
+        overall_coverages_df["coverage"] = overall_coverages
+        specific_coverages_df["coverage"] = specific_coverages
+
+        overall_coverages_dfs.append(overall_coverages_df)
+        specific_coverages_dfs.append(specific_coverages_df)
+
+    overall_coverages = pd.concat(overall_coverages_dfs)
+    specific_coverages = pd.concat(specific_coverages_dfs)
+
+    axs[0].set_title("Overall Quantile", fontsize=24)
+    axs[1].set_title("Specific Quantile", fontsize=24)
+    sns.lineplot(data=overall_coverages, x="confidence", y="confidence", ax=axs[0], color="black", lw=4)
+    sns.lineplot(data=overall_coverages, x="confidence", y="coverage", ax=axs[0], hue="k", legend="auto", palette="flare", lw=4)
+    
+    sns.lineplot(data=specific_coverages, x="confidence", y="confidence", ax=axs[1], color="black", lw=4)
+    sns.lineplot(data=specific_coverages, x="confidence", y="coverage", ax=axs[1], hue="k", legend="auto", palette="flare", lw=4)
+    
     plt.savefig("coverage.png")
     # print(f"Overall: {np.unique(label_overall_covs)[1:]}")
     # print(f"Specific: {np.unique(label_specific_covs)[1:]}")
