@@ -70,3 +70,40 @@ def transform_parameters_batch(theta, **kwargs):
         new[...,j] = my_t_priors[j].transform(theta[...,j])
     return new
 
+def log_target(particles, context, num_particles, **kwargs):
+    T = kwargs['T']
+    device = kwargs['device']
+    K = num_particles
+    params = transform_parameters_batch(particles, **kwargs).to(device)
+    theta1 = params[...,0]
+    theta2 = params[...,1]
+    eyes = torch.eye(T).repeat(K,1,1).to(device) #batch of Qs
+    repeated = -1*theta1.reshape(-1,1).repeat(1, T-1)
+    subdiags = torch.diag_embed(repeated, -1)
+    Qs = eyes + subdiags
+    
+    targets = context.reshape(-1,1).repeat(K, 1, 1)
+    eps_vecs = torch.bmm(Qs, targets)
+    eps_vecs = eps_vecs.squeeze(-1)
+
+    running_sum = torch.zeros(1, K).to(device)
+    for i in range(1, T):
+        const = 1/torch.sqrt(2*math.pi*(.2+theta2*(eps_vecs[:,i-1]**2)))
+        const = torch.log(const).to(device)
+        fact = -1*(eps_vecs[:,i]**2)/(2*(.2+theta2*eps_vecs[:,i-1]**2))
+        running_sum += const
+        running_sum += fact
+    return running_sum
+
+def log_prior(particles, **kwargs):
+    prior = kwargs['prior']
+    theta = transform_parameters(particles, **kwargs)
+    lps = prior.log_prob(theta) #
+    return lps
+
+def log_prior_batch(particles, **kwargs):
+    prior = kwargs['prior']
+    theta = transform_parameters_batch(particles, **kwargs)
+    lps = prior.log_prob(theta) #
+    return lps
+

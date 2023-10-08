@@ -44,44 +44,7 @@ from generate import generate_data
 from losses import favi_loss, iwbo_loss, elbo_loss
 from scipy.integrate import quad
 from modules import TransformedUniform
-from utils import prior_t_sample, transform_parameters, transform_parameters_batch
-
-def log_target(particles, context, num_particles, **kwargs):
-    T = kwargs['T']
-    device = kwargs['device']
-    K = num_particles
-    params = transform_parameters_batch(particles, **kwargs).to(device)
-    theta1 = params[...,0]
-    theta2 = params[...,1]
-    eyes = torch.eye(T).repeat(K,1,1).to(device) #batch of Qs
-    repeated = -1*theta1.reshape(-1,1).repeat(1, T-1)
-    subdiags = torch.diag_embed(repeated, -1)
-    Qs = eyes + subdiags
-    
-    targets = context.reshape(-1,1).repeat(K, 1, 1)
-    eps_vecs = torch.bmm(Qs, targets)
-    eps_vecs = eps_vecs.squeeze(-1)
-
-    running_sum = torch.zeros(1, K).to(device)
-    for i in range(1, T):
-        const = 1/torch.sqrt(2*math.pi*(.2+theta2*(eps_vecs[:,i-1]**2)))
-        const = torch.log(const).to(device)
-        fact = -1*(eps_vecs[:,i]**2)/(2*(.2+theta2*eps_vecs[:,i-1]**2))
-        running_sum += const
-        running_sum += fact
-    return running_sum
-
-def log_prior(particles, **kwargs):
-    prior = kwargs['prior']
-    theta = transform_parameters(particles, **kwargs)
-    lps = prior.log_prob(theta) #
-    return lps
-
-def log_prior_batch(particles, **kwargs):
-    prior = kwargs['prior']
-    theta = transform_parameters_batch(particles, **kwargs)
-    lps = prior.log_prob(theta) #
-    return lps
+from utils import prior_t_sample, transform_parameters, transform_parameters_batch, log_prior, log_prior_batch, log_target
 
 def setup(cfg):
     # initialize(config_path=".", job_name="test_app")
@@ -126,29 +89,14 @@ def setup(cfg):
     fake_zs = torch.randn((K*mb_size, theta_dim))
     fake_xs = torch.randn((K*mb_size, x_dim))
     encoder = build_nsf(fake_zs, fake_xs, z_score_x='structured', z_score_y='structured', hidden_features=64, embedding_net=EmbeddingNet(x_dim).float())
-    #encoder = MixtureDensityNetwork(dim_in=x_dim, dim_out=theta_dim, n_components=20, hidden_dim=64)
 
     logger_string = '{},{},{}'.format(cfg.training.loss, cfg.training.lr, K)
     encoder.to(device)
     optimizer = torch.optim.Adam(encoder.parameters(), lr=cfg.training.lr)
     
     kwargs['encoder'] = encoder
-
-    # clip_value = 1e-1
-    # for p in encoder.parameters():
-    #     p.register_hook(lambda grad: torch.clamp(grad, -clip_value, clip_value))
-
-    # Select loss function
     loss_name = cfg.training.loss
     kwargs['loss'] = loss_name
-    if loss_name == 'elbo':
-        loss_fcn = lambda: elbo_loss(true_x, **kwargs)
-    elif loss_name == 'iwbo':
-        loss_fcn = lambda: iwbo_loss(true_x, **kwargs)
-    elif loss_name == 'favi':
-        loss_fcn = lambda: favi_loss(true_x, **kwargs)
-    else:
-        raise ValueError('Specify an appropriate loss name string.')
 
     return (true_theta, 
             true_x, 
