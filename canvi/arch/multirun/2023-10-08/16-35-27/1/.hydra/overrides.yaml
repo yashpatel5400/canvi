@@ -1,0 +1,4 @@
+- training.loss=elbo
+- training.log_eff=True
+- training.device=cpu
+- training.epochs=25000

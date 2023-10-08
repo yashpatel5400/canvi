@@ -1,0 +1,41 @@
+seed: 789243
+dir: /home/yppatel/canvi/canvi/arch
+data:
+  n_pts: 1000
+  T: 100
+training:
+  device: cpu
+  epochs: 25000
+  lr: 0.0001
+  grad_clip: 1
+  mb_size: 1
+  loss: iwbo
+  log_eff: false
+encoder:
+  type: flow
+  run: true
+smc:
+  K: 10
+  skip: false
+  only: false
+  index: 0
+plots:
+  points_to_plot:
+  - 4
+  - 7
+  - 8
+  - 19
+  - 25
+  - 28
+  - 30
+  losses:
+  - elbo
+  - iwbo
+  - favi
+  alphas:
+  - 0.5
+  - 0.25
+  - 0.1
+  - 0.05
+  lr: 0.0001
+  n_test_points: 1000

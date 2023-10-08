@@ -1,0 +1,3 @@
+- training.loss=favi
+- training.device=cpu
+- training.epochs=1

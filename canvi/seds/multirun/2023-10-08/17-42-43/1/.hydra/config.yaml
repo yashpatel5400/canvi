@@ -1,0 +1,40 @@
+seed: 789243
+dir: /home/yppatel/canvi/canvi/seds
+data:
+  min_mag: 10
+  max_mag: 11
+  jitter: 1.0e-05
+  n_pts: 100
+  noise: 0.1
+  scale: 1.0e-37
+  smooth: false
+  smooth_parameter: 5.0
+  dream_batches: 1000
+  multiplicative_noise: 0.1
+training:
+  use_from_pickle: true
+  device: cuda:7
+  epochs: 10000
+  lr: 0.0001
+  grad_clip: 1
+  mb_size: 16
+  loss: iwbo
+encoder:
+  type: mdn
+smc:
+  K: 1000
+  index: 0
+  only: false
+plots:
+  index: 0
+  losses:
+  - elbo
+  - iwbo
+  - favi
+  alphas:
+  - 0.5
+  - 0.25
+  - 0.1
+  - 0.05
+  lr: 0.0001
+  n_test_points: 1000

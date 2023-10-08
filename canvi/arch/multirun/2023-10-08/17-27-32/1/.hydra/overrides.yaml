@@ -1,0 +1,3 @@
+- training.loss=elbo
+- training.device=cpu
+- training.epochs=1

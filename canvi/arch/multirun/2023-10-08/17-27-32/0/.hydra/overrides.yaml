@@ -1,0 +1,3 @@
+- training.loss=iwbo
+- training.device=cpu
+- training.epochs=1
