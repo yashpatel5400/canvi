@@ -62,8 +62,6 @@ def main(cfg : DictConfig) -> None:
 
     dir = cfg.dir
     os.chdir(dir)
-    cfg.smc.only=False
-    #cfg.training.device = 'cpu'
 
     (
         thetas,

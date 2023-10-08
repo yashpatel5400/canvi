@@ -136,9 +136,6 @@ def setup(cfg):
     else:
         raise ValueError('cfg.encoder.type must be one of "flow", "mdn"')
     
-    # for p in encoder.parameters():
-    #     p.register_hook(lambda grad: torch.clamp(grad, -1e-2, 1e-2))
-    
     # Set up emulator 
     emulator = PROVABGSEmulator(dim_in=z_dim, dim_out=x_dim)
     emulator.load_state_dict(torch.load('./emulator_weights/weights_min=10,max=11,epochs=2000'))
@@ -163,14 +160,6 @@ def setup(cfg):
     # Select loss function
     loss_name = cfg.training.loss
     kwargs['loss'] = loss_name
-    # if loss_name == 'elbo':
-    #     loss_fcn = lambda: elbo_loss(seds, mdn=mdn, flow=flow, **kwargs)
-    # elif loss_name == 'iwbo':
-    #     loss_fcn = lambda: iwbo_loss(seds, mdn=mdn, flow=flow, **kwargs)
-    # elif loss_name == 'favi':
-    #     loss_fcn = lambda: favi_loss(mdn=mdn, flow=flow, **kwargs)
-    # else:
-    #     raise ValueError('Specify an appropriate loss name string.')
     
     return (
         thetas,
