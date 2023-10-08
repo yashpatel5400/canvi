@@ -1,0 +1,45 @@
+defaults:
+  - override hydra/launcher: joblib
+
+hydra:
+  launcher:
+    n_jobs: 20
+
+seed: 789243
+dir: '/home/yppatel/canvi/canvi/seds'
+
+data:
+  min_mag: 10
+  max_mag: 11
+  jitter: 1e-5
+  n_pts: 100
+  noise: 1e-1
+  scale: 1e-37
+  smooth: False
+  smooth_parameter: 5.
+  dream_batches: 1000
+  multiplicative_noise: 1e-1
+
+training:
+  use_from_pickle: True
+  device: 'cuda:7'
+  epochs: 10000
+  lr: 1e-4
+  grad_clip: 1
+  mb_size: 16
+  loss: 'elbo'
+
+encoder:
+  type: 'mdn'
+
+smc:
+  K: 1000
+  index: 0
+  only: False
+
+plots:
+  index: 0
+  losses: ['elbo', 'iwbo', 'favi']
+  alphas: [.5, .25, .1, .05]
+  lr: 1e-4
+  n_test_points: 1000
