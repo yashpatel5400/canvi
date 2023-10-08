@@ -26,12 +26,20 @@ plt.rc('ytick', labelsize=BIGGER_SIZE)    # fontsize of the tick labels
 plt.rc('legend', fontsize=BIGGER_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
-def get_thetas_grid(mins, maxs):
-    theta1 = np.linspace(mins[0], maxs[0], 200)
-    theta2 = np.linspace(mins[1], maxs[1], 200)
-    dA = (theta1[1] - theta1[0]) * (theta2[1] - theta2[0]) # area element (for approximating integral)
-    thetas_unflat = np.meshgrid(theta1, theta2)
-    return np.vstack((thetas_unflat[0].flatten(), thetas_unflat[1].flatten())).T.astype(np.float32), dA
+# def get_thetas_grid(mins, maxs):
+#     theta1 = np.linspace(mins[0], maxs[0], 200)
+#     theta2 = np.linspace(mins[1], maxs[1], 200)
+#     dA = (theta1[1] - theta1[0]) * (theta2[1] - theta2[0]) # area element (for approximating integral)
+#     thetas_unflat = np.meshgrid(theta1, theta2)
+#     return np.vstack((thetas_unflat[0].flatten(), thetas_unflat[1].flatten())).T.astype(np.float32), dA
+
+def get_thetas_grid(mins, maxs, K = 500):
+    # K -> discretization of the grid (assumed same for each dimension)
+    d = len(mins) # dimensionality of theta
+    ranges = [np.arange(mins[i], maxs[i], (maxs[i] - mins[i]) / K) for i in range(d)]
+    dA = np.prod([(maxs[i] - mins[i]) / K for i in range(d)])
+    theta_grid = np.array(np.meshgrid(*ranges)).T.astype(np.float32)
+    return theta_grid.reshape(-1, theta_grid.shape[-1]), dA
 
 def get_exact_vol(encoder, test_x, theta_mins, theta_maxs, conformal_quantile):
     theta_grid, dA = get_thetas_grid(theta_mins, theta_maxs)
@@ -52,7 +60,7 @@ def get_mc_vol_est(prior, encoder, test_x, conformal_quantile, K = 10, S = 1_000
         lambda_k = 1 - k / K
         zs = np.random.random((len(test_x), S)) < lambda_k # indicators for mixture draw
 
-        prior_theta_dist = prior.sample((len(test_x), S)).detach().cpu().numpy()
+        prior_theta_dist = prior.sample((len(test_x), S)).detach().cpu().numpy()[...,:2]
         empirical_theta_dist = encoder.sample((S), test_x).detach().cpu().numpy()
         sample_x = np.transpose(np.tile(test_x, (S,1,1)), (1, 0, 2))
 
@@ -64,8 +72,14 @@ def get_mc_vol_est(prior, encoder, test_x, conformal_quantile, K = 10, S = 1_000
         flat_sample_x = sample_x.reshape(-1, sample_x.shape[-1])
         flat_mixed_theta_dist = torch.Tensor(flat_mixed_theta_dist)
         
-        prior_probs = prior.log_prob(flat_mixed_theta_dist).detach().cpu().exp().numpy()
+        # HACK: for problems with uniform priors, we can just manually compute prob
+        
+        # prior_probs = prior.log_prob(flat_mixed_theta_dist).detach().cpu().exp().numpy()
         var_probs = encoder.log_prob(flat_mixed_theta_dist, flat_sample_x).detach().cpu().exp().numpy()
+        # prior_probs = np.ones(var_probs.shape) * 1 / 36
+        # prior_probs = np.ones(var_probs.shape) * 1 / 4
+        # prior_probs = np.ones(var_probs.shape) * 1 / 4
+        prior_probs = np.ones(var_probs.shape) * 1 / 400
         mixed_probs = lambda_k * prior_probs + (1 - lambda_k) * var_probs
 
         mc_set_size_est_k = np.mean((1 / var_probs < conformal_quantile).astype(float) / mixed_probs)
@@ -109,8 +123,9 @@ if __name__  == "__main__":
 
     epochs = [100 * i for i in range(26)]
 
-    with open(os.path.join("minmax", "two_moons.pkl"), "rb") as f:
+    with open(os.path.join("minmax", f"{task_name}.pkl"), "rb") as f:
         mins, maxs = pickle.load(f)
+    mins, maxs = mins[:2], maxs[:2]
 
     dfs = []
     for epoch in epochs:
