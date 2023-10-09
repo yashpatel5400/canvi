@@ -1,6 +1,6 @@
 import torch
 from generate import generate_data_favi
-from utils import transform_parameters, transform_parameters_batch
+from utils import prior_t_sample, transform_parameters, transform_parameters_batch
 import torch.distributions as D
 import torch.nn as nn
 import numpy as np
@@ -64,28 +64,30 @@ def favi_loss(**kwargs):
     lps = encoder.log_prob(z.float().to(device), x.to(device).float())
     return -1*lps.mean()
 
-def mc_lebesgue(priors, encoder, test_x, conformal_quantile, K = 10, S = 1_000):
+def mc_lebesgue(priors, encoder, test_x, conformal_quantile, device, kwargs, task_factor = 1/2, K = 10, S = 1_000):
     mc_set_size_est_ks = []
     for k in np.linspace(0, 1, K):
         # start = time.time() 
         lambda_k = 1 - k / K
-        zs = np.random.random((len(test_x), S)) < lambda_k # indicators for mixture draw
+        zs = (torch.rand((len(test_x), S)) < lambda_k).to(device) # indicators for mixture draw
 
-        prior_theta_dist = np.concatenate([prior.sample((len(test_x), S)).unsqueeze(-1).detach().cpu().numpy() for prior in priors], axis=-1)
-        empirical_theta_dist = encoder.sample(S, test_x).detach().cpu().numpy()
-        sample_x = np.transpose(np.tile(test_x, (S,1,1)), (1, 0, 2))
+        # prior_theta_dist = prior.sample((len(test_x), S))[...,:2].to(device)
+        prior_theta_dist = prior_t_sample(S, **kwargs).unsqueeze(0)
+        empirical_theta_dist = encoder.sample((S), test_x)
+        sample_x = torch.permute(torch.tile(test_x, (S,1,1)), (1, 0, 2))
 
-        mixed_theta_dist = np.zeros(empirical_theta_dist.shape)
-        mixed_theta_dist[np.where(zs) == 0] = prior_theta_dist[np.where(zs) == 0]
-        mixed_theta_dist[np.where(zs) == 1] = empirical_theta_dist[np.where(zs) == 1]
-
+        mixed_theta_dist = torch.zeros(empirical_theta_dist.shape).to(device)
+        mixed_theta_dist[torch.where(zs == 0)] = prior_theta_dist[torch.where(zs == 0)]
+        mixed_theta_dist[torch.where(zs == 1)] = empirical_theta_dist[torch.where(zs == 1)]
+        
         flat_mixed_theta_dist = mixed_theta_dist.reshape(-1, mixed_theta_dist.shape[-1])
         flat_sample_x = sample_x.reshape(-1, sample_x.shape[-1])
-        flat_mixed_theta_dist = torch.Tensor(flat_mixed_theta_dist)
-        
+        # flat_mixed_theta_dist = torch.Tensor(flat_mixed_theta_dist)
+
+        # HACK: for problems with uniform priors, we can just manually compute prob
         # prior_probs = prior.log_prob(flat_mixed_theta_dist).detach().cpu().exp().numpy()
         var_probs = encoder.log_prob(flat_mixed_theta_dist, flat_sample_x).detach().cpu().exp().numpy()
-        prior_probs = np.ones(var_probs.shape) * 1 / 2
+        prior_probs = np.ones(var_probs.shape) * task_factor
         mixed_probs = (1 - lambda_k) * prior_probs + lambda_k * var_probs
 
         mc_set_size_est_k = np.mean((1 / var_probs < conformal_quantile).astype(float) / mixed_probs)
@@ -120,7 +122,7 @@ def lebesgue(cal_scores, theta_batch, x_batch, alpha, **kwargs):
         exact_area = in_region*(.01)*(.01)
         exact_areas.append(exact_area.item())
         
-        mc_area = mc_lebesgue(my_t_priors, encoder, test_x, quantiles[0].cpu().detach().numpy())
+        mc_area = mc_lebesgue(my_t_priors, encoder, test_x, quantiles[0].detach().cpu().numpy(), device, kwargs)
         mc_areas.append(mc_area)
 
         print(f"exact_area={exact_area}")
