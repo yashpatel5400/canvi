@@ -82,7 +82,7 @@ def plot_eff():
 def volume_trial(encoder, kwargs, total_trials=5, trial_sims=100):
     calibration_theta, calibration_x = generate_data_favi(1000, **kwargs)
     lps = encoder.log_prob(calibration_theta, calibration_x).detach()
-    cal_scores = -1*lps.reshape(-1)
+    cal_scores = 1 / lps.reshape(-1).cpu().exp().numpy()
     effs, mc_effs = [], []
     alphas = [.05]
     for _ in range(total_trials):
@@ -92,6 +92,8 @@ def volume_trial(encoder, kwargs, total_trials=5, trial_sims=100):
         mc_effs.append(np.mean(mc_eff))
     effs = np.stack(effs)
     mc_effs = np.stack(mc_effs)
+    print(f"effs: {np.mean(effs)} ({np.std(effs)})")
+    print(f"mc_effs: {np.mean(mc_effs)} ({np.std(mc_effs)})")
     return pd.DataFrame(np.vstack([effs, mc_effs]).T, columns=["Exact", "Estimate"])
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
@@ -121,9 +123,9 @@ def main(cfg : DictConfig) -> None:
     final_effs = {}
 
     training_to_path = {
+        "favi": "./weights/favi,0.0001,10.pth",
         "iwbo": "./weights/iwbo,0.0001,10.pth",
         "elbo": "./weights/elbo,0.0001,10.pth",
-        "favi": "./weights/favi,0.0001,10.pth",
     }
 
     for training_loss in training_to_path:
@@ -131,6 +133,7 @@ def main(cfg : DictConfig) -> None:
         encoder.load_state_dict(torch.load(training_to_path[training_loss]))
         encoder = encoder.to(device)
         df = volume_trial(encoder, kwargs)
+        print(df)
         with open(f"./figs/final_eff_{training_loss}.tex",'w') as tf:
             tf.write(df.to_latex())
 
