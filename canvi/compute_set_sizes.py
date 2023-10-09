@@ -9,7 +9,7 @@ import seaborn as sns
 import pickle
 import argparse
 
-device = "cpu"
+device = "cuda:0"
 
 plt.rcParams['mathtext.fontset'] = 'stix'
 plt.rcParams['font.family'] = 'STIXGeneral'
@@ -43,8 +43,8 @@ def get_thetas_grid(mins, maxs, K = 200):
 
 def get_exact_vol(encoder, test_x, theta_mins, theta_maxs, conformal_quantile):
     theta_grid, dA = get_thetas_grid(theta_mins, theta_maxs)
-    test_x_tiled = np.transpose(np.tile(test_x, (theta_grid.shape[0],1,1)), (1, 0, 2))
-    theta_grid_tiled = np.tile(theta_grid, (test_x_tiled.shape[0],1,1))
+    test_x_tiled = torch.permute(torch.tile(test_x, (theta_grid.shape[0],1,1)), (1, 0, 2)).to(device)
+    theta_grid_tiled = torch.tile(torch.Tensor(theta_grid), (test_x_tiled.shape[0],1,1)).to(device)
 
     flat_x = test_x_tiled.reshape(-1, test_x_tiled.shape[-1])
     flat_theta_grid = theta_grid_tiled.reshape(-1, theta_grid_tiled.shape[-1])
@@ -58,19 +58,19 @@ def get_mc_vol_est(prior, encoder, test_x, conformal_quantile, task_factor, K = 
     for k in np.linspace(0, 1, K):
         # start = time.time() 
         lambda_k = 1 - k / K
-        zs = np.random.random((len(test_x), S)) < lambda_k # indicators for mixture draw
+        zs = (torch.rand((len(test_x), S)) < lambda_k).to(device) # indicators for mixture draw
 
-        prior_theta_dist = prior.sample((len(test_x), S)).detach().cpu().numpy()[...,:2]
-        empirical_theta_dist = encoder.sample((S), test_x).detach().cpu().numpy()
-        sample_x = np.transpose(np.tile(test_x, (S,1,1)), (1, 0, 2))
+        prior_theta_dist = prior.sample((len(test_x), S))[...,:2].to(device)
+        empirical_theta_dist = encoder.sample((S), test_x)
+        sample_x = torch.permute(torch.tile(test_x, (S,1,1)), (1, 0, 2))
 
-        mixed_theta_dist = np.zeros(empirical_theta_dist.shape)
-        mixed_theta_dist[np.where(zs == 0)] = prior_theta_dist[np.where(zs == 0)]
-        mixed_theta_dist[np.where(zs == 1)] = empirical_theta_dist[np.where(zs == 1)]
+        mixed_theta_dist = torch.zeros(empirical_theta_dist.shape).to(device)
+        mixed_theta_dist[torch.where(zs == 0)] = prior_theta_dist[torch.where(zs == 0)]
+        mixed_theta_dist[torch.where(zs == 1)] = empirical_theta_dist[torch.where(zs == 1)]
         
         flat_mixed_theta_dist = mixed_theta_dist.reshape(-1, mixed_theta_dist.shape[-1])
         flat_sample_x = sample_x.reshape(-1, sample_x.shape[-1])
-        flat_mixed_theta_dist = torch.Tensor(flat_mixed_theta_dist)
+        # flat_mixed_theta_dist = torch.Tensor(flat_mixed_theta_dist)
 
         # HACK: for problems with uniform priors, we can just manually compute prob
         # prior_probs = prior.log_prob(flat_mixed_theta_dist).detach().cpu().exp().numpy()
@@ -129,6 +129,7 @@ if __name__  == "__main__":
         "slcp": 1 / 36,
         "gaussian_linear_uniform": 1 / 4,
     }
+    test_sims = 10
 
     dfs = []
     for epoch in epochs:
@@ -144,7 +145,8 @@ if __name__  == "__main__":
 
         set_sizes_exact = []
         mc_set_sizes_est = []
-        for batch_idx, test_x in enumerate(test_xs):
+        for batch_idx, full_test_x in enumerate(test_xs):
+            test_x = full_test_x[:test_sims].to(device)
             set_sizes_exact.append(get_exact_vol(encoder, test_x, mins, maxs, conformal_quantile))
             mc_set_sizes_est.append(get_mc_vol_est(prior, encoder, test_x, conformal_quantile, task_factors[task_name]))
             print(f"Completed batch = {batch_idx}")
