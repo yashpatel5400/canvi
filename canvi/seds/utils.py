@@ -52,6 +52,13 @@ def prior_t_sample(n_obs, **kwargs):
     #samples[1] = shrink_dirichlet(samples[1])
     return torch.cat(samples, -1)
 
+def prior_t_sample_tup(shape, **kwargs):
+    my_t_priors = kwargs['my_t_priors']
+    samples = [prior.sample(shape) for prior in my_t_priors]
+    samples = [x.unsqueeze(-1) for x in samples]
+    #samples[1] = shrink_dirichlet(samples[1])
+    return torch.cat(samples, -1)
+
 def log_t_prior(samples, **kwargs):
     '''
     Give samples of shape (n_samples, 11),

@@ -2,9 +2,20 @@ import torch
 import torch.distributions as D
 import torch.nn as nn
 import torch.nn.functional as F
-from utils import log_t_prior
+from utils import prior_t_sample, log_t_prior, prior_t_sample_tup
 from generate import generate_data_emulator
 import numpy as np
+
+
+def get_dist(encoder, x, device):
+    log_pi, mu, sigma = encoder(x.to(device))
+    mix = D.Categorical(logits=log_pi)
+    comp = D.Independent(D.Normal(mu, sigma), 1)
+    return D.MixtureSameFamily(mix, comp)
+
+def get_log_prob(encoder, x, theta, device):
+    mixture = get_dist(encoder, x, device)
+    return mixture.log_prob(theta).detach()
 
 def get_imp_weights(pts, num_samples, mdn=True, flow=False, log=False, prop_prior=0., **kwargs):
     mb_size = kwargs['mb_size']
@@ -106,49 +117,32 @@ def favi_loss(mdn=True, flow=False, **kwargs):
         raise ValueError('At least one of mdn or flow flags must be true.')
 
 
-def mc_lebesgue(priors, encoder, test_x, conformal_quantile, K = 10, S = 1_000):
+def mc_lebesgue(prior, encoder, test_x, conformal_quantile, device, kwargs, task_factor = 1/2, K = 10, S = 1_000):
     mc_set_size_est_ks = []
-    for k in np.linspace(0, 1, K):
-        # start = time.time() 
-        lambda_k = 1 - k / K
-        zs = np.random.random((len(test_x), S)) < lambda_k # indicators for mixture draw
+    for lambda_k in np.linspace(0, 1, K):
+        zs = (torch.rand(S) < lambda_k).to(device) # indicators for mixture draw
 
-        prior_theta_dist = np.concatenate([prior.sample((len(test_x), S)).unsqueeze(-1).detach().cpu().numpy() for prior in priors], axis=-1)
-        empirical_theta_dist = encoder.sample(S, test_x).detach().cpu().numpy()
-        sample_x = np.transpose(np.tile(test_x, (S,1,1)), (1, 0, 2))
+        prior_theta_dist = prior_t_sample(S, **kwargs)
+        theta_dist = get_dist(encoder, test_x, device)
+        empirical_theta_dist = theta_dist.sample((S,)).squeeze()
 
-        mixed_theta_dist = np.zeros(empirical_theta_dist.shape)
-        mixed_theta_dist[np.where(zs) == 0] = prior_theta_dist[np.where(zs) == 0]
-        mixed_theta_dist[np.where(zs) == 1] = empirical_theta_dist[np.where(zs) == 1]
+        mixed_theta_dist = torch.zeros(empirical_theta_dist.shape).to(device)
+        mixed_theta_dist[torch.where(zs == 0)] = prior_theta_dist[torch.where(zs == 0)]
+        mixed_theta_dist[torch.where(zs == 1)] = empirical_theta_dist[torch.where(zs == 1)]
 
-        flat_mixed_theta_dist = mixed_theta_dist.reshape(-1, mixed_theta_dist.shape[-1])
-        flat_sample_x = sample_x.reshape(-1, sample_x.shape[-1])
-        flat_mixed_theta_dist = torch.Tensor(flat_mixed_theta_dist)
-        
-        # prior_probs = prior.log_prob(flat_mixed_theta_dist).detach().cpu().exp().numpy()
-        var_probs = (-encoder.loss(flat_mixed_theta_dist, flat_sample_x)).detach().cpu().exp().numpy()
-        prior_probs = np.ones(var_probs.shape) * 1 / 2
-        mixed_probs = lambda_k * prior_probs + (1 - lambda_k) * var_probs
+        var_probs = theta_dist.log_prob(mixed_theta_dist).detach().cpu().exp().numpy()
+        prior_probs = log_t_prior(mixed_theta_dist, **kwargs).detach().cpu().exp().numpy()
+        mixed_probs = (1 - lambda_k) * prior_probs + lambda_k * var_probs
 
         mc_set_size_est_k = np.mean((1 / var_probs < conformal_quantile).astype(float) / mixed_probs)
         mc_set_size_est_ks.append(mc_set_size_est_k)
-    mc_est = np.mean(mc_set_size_est_ks)
-    return mc_est
+    return np.mean(mc_set_size_est_ks)
 
 def lebesgue(cal_scores, theta_batch, x_batch, alpha, **kwargs):
     device = kwargs['device']
     encoder = kwargs['encoder']
     my_t_priors = kwargs['my_t_priors']
-    cal_scores = cal_scores.to(device)
     
-    # Get quantile
-    q = torch.tensor([1-alpha]).to(device)
-    quantiles = torch.quantile(cal_scores, q, dim=0)
-
-    mc_areas = []
-    for j in range(x_batch.shape[0]):
-        test_x = x_batch[j].reshape(1,-1)
-        mc_area = mc_lebesgue(my_t_priors, encoder, test_x, quantiles[0].cpu().detach().numpy())
-        mc_areas.append(mc_area)
-
-    return mc_areas
+    conformal_quantile = np.quantile(cal_scores, q = 1-alpha)
+    mc_area = mc_lebesgue(my_t_priors, encoder, x_batch, conformal_quantile, device, kwargs)
+    return mc_area

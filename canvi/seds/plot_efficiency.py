@@ -39,7 +39,7 @@ from scipy.signal import savgol_filter
 from generate import generate_data_emulator
 # from utils import posterior, normalizing_integral, transform_parameters
 from setup import setup
-from losses import lebesgue
+from losses import lebesgue, get_log_prob
 
 plt.style.use('ggplot')
 plt.rcParams.update({'font.size': 28})
@@ -79,20 +79,19 @@ def plot_eff():
     return 
 
 
-def volume_trial(encoder, kwargs, total_trials=5, trial_sims=100):
+def volume_trial(encoder, kwargs, total_trials=5, trial_sims=1):
     calibration_theta, calibration_x = generate_data_emulator(1000, return_theta=True, **kwargs)
-    lps = encoder.loss(calibration_theta, calibration_x).detach()
-    cal_scores = lps.reshape(-1)
-    effs, mc_effs = [], []
-    alphas = [.05]
+    lps = get_log_prob(encoder, calibration_x, calibration_theta, kwargs['device']).detach()
+    cal_scores = 1 / lps.reshape(-1).cpu().exp().numpy()
+
+    mc_effs = []
+    alpha = .05
     for _ in range(total_trials):
         fresh_theta, fresh_x = generate_data_emulator(trial_sims, return_theta=True, **kwargs)
-        this_eff, mc_eff = zip(*[lebesgue(cal_scores, fresh_theta, fresh_x, alpha, **kwargs) for alpha in alphas])
-        effs.append(np.mean(this_eff))
-        mc_effs.append(np.mean(mc_eff))
-    effs = np.stack(effs)
-    mc_effs = np.stack(mc_effs)
-    return pd.DataFrame(np.vstack([effs, mc_effs]).T, columns=["Exact", "Estimate"])
+        mc_eff = lebesgue(cal_scores, fresh_theta, fresh_x, alpha, **kwargs)
+        mc_effs.append(mc_eff)
+    print(f"mc_effs: {np.mean(mc_effs)} ({np.std(mc_effs)})")
+    return pd.DataFrame(np.vstack([mc_effs]).T, columns=["Estimate"])
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
 def main(cfg : DictConfig) -> None:

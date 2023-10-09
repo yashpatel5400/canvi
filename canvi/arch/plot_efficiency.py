@@ -79,7 +79,7 @@ def plot_eff():
     return 
 
 
-def volume_trial(encoder, kwargs, total_trials=5, trial_sims=100):
+def volume_trial(encoder, kwargs, total_trials=5, trial_sims=10):
     calibration_theta, calibration_x = generate_data_favi(1000, **kwargs)
     lps = encoder.log_prob(calibration_theta, calibration_x).detach()
     cal_scores = 1 / lps.reshape(-1).cpu().exp().numpy()

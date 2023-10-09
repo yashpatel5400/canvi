@@ -88,7 +88,7 @@ def get_exact_vol(encoder, test_x, theta_mins, theta_maxs, conformal_quantile, d
 
 def mc_lebesgue(prior, encoder, test_x, conformal_quantile, device, kwargs, task_factor = 1/2, K = 10, S = 1_000):
     mc_set_size_est_ks = []
-    for lambda_k in np.linspace(0, 0.1, K):
+    for lambda_k in [1]:# np.linspace(0, 0.1, K):
         # start = time.time() 
         zs = (torch.rand((len(test_x), S)) < lambda_k).to(device) # indicators for mixture draw
 
