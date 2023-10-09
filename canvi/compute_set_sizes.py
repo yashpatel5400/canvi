@@ -33,7 +33,7 @@ plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 #     thetas_unflat = np.meshgrid(theta1, theta2)
 #     return np.vstack((thetas_unflat[0].flatten(), thetas_unflat[1].flatten())).T.astype(np.float32), dA
 
-def get_thetas_grid(mins, maxs, K = 500):
+def get_thetas_grid(mins, maxs, K = 200):
     # K -> discretization of the grid (assumed same for each dimension)
     d = len(mins) # dimensionality of theta
     ranges = [np.arange(mins[i], maxs[i], (maxs[i] - mins[i]) / K) for i in range(d)]
@@ -53,7 +53,7 @@ def get_exact_vol(encoder, test_x, theta_mins, theta_maxs, conformal_quantile):
     print(f"Exact: {exact_vol}")
     return exact_vol
 
-def get_mc_vol_est(prior, encoder, test_x, conformal_quantile, K = 10, S = 1_000):
+def get_mc_vol_est(prior, encoder, test_x, conformal_quantile, task_factor, K = 10, S = 1_000):
     mc_set_size_est_ks = []
     for k in np.linspace(0, 1, K):
         # start = time.time() 
@@ -65,22 +65,18 @@ def get_mc_vol_est(prior, encoder, test_x, conformal_quantile, K = 10, S = 1_000
         sample_x = np.transpose(np.tile(test_x, (S,1,1)), (1, 0, 2))
 
         mixed_theta_dist = np.zeros(empirical_theta_dist.shape)
-        mixed_theta_dist[np.where(zs) == 0] = prior_theta_dist[np.where(zs) == 0]
-        mixed_theta_dist[np.where(zs) == 1] = empirical_theta_dist[np.where(zs) == 1]
-
+        mixed_theta_dist[np.where(zs == 0)] = prior_theta_dist[np.where(zs == 0)]
+        mixed_theta_dist[np.where(zs == 1)] = empirical_theta_dist[np.where(zs == 1)]
+        
         flat_mixed_theta_dist = mixed_theta_dist.reshape(-1, mixed_theta_dist.shape[-1])
         flat_sample_x = sample_x.reshape(-1, sample_x.shape[-1])
         flat_mixed_theta_dist = torch.Tensor(flat_mixed_theta_dist)
-        
+
         # HACK: for problems with uniform priors, we can just manually compute prob
-        
         # prior_probs = prior.log_prob(flat_mixed_theta_dist).detach().cpu().exp().numpy()
         var_probs = encoder.log_prob(flat_mixed_theta_dist, flat_sample_x).detach().cpu().exp().numpy()
-        # prior_probs = np.ones(var_probs.shape) * 1 / 36
-        # prior_probs = np.ones(var_probs.shape) * 1 / 4
-        # prior_probs = np.ones(var_probs.shape) * 1 / 4
-        prior_probs = np.ones(var_probs.shape) * 1 / 400
-        mixed_probs = lambda_k * prior_probs + (1 - lambda_k) * var_probs
+        prior_probs = np.ones(var_probs.shape) * task_factor
+        mixed_probs = (1 - lambda_k) * prior_probs + lambda_k * var_probs
 
         mc_set_size_est_k = np.mean((1 / var_probs < conformal_quantile).astype(float) / mixed_probs)
         mc_set_size_est_ks.append(mc_set_size_est_k)
@@ -127,6 +123,13 @@ if __name__  == "__main__":
         mins, maxs = pickle.load(f)
     mins, maxs = mins[:2], maxs[:2]
 
+    task_factors = {
+        "two_moons": 1 / 4,
+        "gaussian_mixture": 1 / 400,
+        "slcp": 1 / 36,
+        "gaussian_linear_uniform": 1 / 4,
+    }
+
     dfs = []
     for epoch in epochs:
         print(f"Computing epoch={epoch}")
@@ -143,7 +146,7 @@ if __name__  == "__main__":
         mc_set_sizes_est = []
         for batch_idx, test_x in enumerate(test_xs):
             set_sizes_exact.append(get_exact_vol(encoder, test_x, mins, maxs, conformal_quantile))
-            mc_set_sizes_est.append(get_mc_vol_est(prior, encoder, test_x, conformal_quantile))
+            mc_set_sizes_est.append(get_mc_vol_est(prior, encoder, test_x, conformal_quantile, task_factors[task_name]))
             print(f"Completed batch = {batch_idx}")
         
         df = pd.DataFrame(columns=["sizes", "epoch"])
