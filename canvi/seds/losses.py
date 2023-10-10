@@ -117,7 +117,7 @@ def favi_loss(mdn=True, flow=False, **kwargs):
         raise ValueError('At least one of mdn or flow flags must be true.')
 
 
-def mc_lebesgue(prior, encoder, test_x, conformal_quantile, device, kwargs, task_factor = 1/2, K = 10, S = 1_000):
+def mc_lebesgue(prior, encoder, test_x, conformal_quantile, device, kwargs, K = 10, S = 5_000):
     mc_set_size_est_ks = []
     for lambda_k in np.linspace(0, 1, K):
         zs = (torch.rand(S) < lambda_k).to(device) # indicators for mixture draw
@@ -134,7 +134,7 @@ def mc_lebesgue(prior, encoder, test_x, conformal_quantile, device, kwargs, task
         prior_probs = log_t_prior(mixed_theta_dist, **kwargs).detach().cpu().exp().numpy()
         mixed_probs = (1 - lambda_k) * prior_probs + lambda_k * var_probs
 
-        mc_set_size_est_k = np.mean((1 / var_probs < conformal_quantile).astype(float) / mixed_probs)
+        mc_set_size_est_k = np.nanmean((1 / var_probs < conformal_quantile).astype(float) / mixed_probs)
         mc_set_size_est_ks.append(mc_set_size_est_k)
     return np.mean(mc_set_size_est_ks)
 

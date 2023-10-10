@@ -31,6 +31,7 @@ import hydra
 from hydra import compose, initialize
 from omegaconf import DictConfig
 import random
+from decimal import Decimal
 import json
 from cde.mdn import MixtureDensityNetwork
 from cde.nsf import build_nsf, EmbeddingNet
@@ -79,8 +80,8 @@ def plot_eff():
     return 
 
 
-def volume_trial(encoder, kwargs, total_trials=5, trial_sims=1):
-    calibration_theta, calibration_x = generate_data_emulator(1000, return_theta=True, **kwargs)
+def volume_trial(encoder, kwargs, total_trials=10, trial_sims=1):
+    calibration_theta, calibration_x = generate_data_emulator(5000, return_theta=True, **kwargs)
     lps = get_log_prob(encoder, calibration_x, calibration_theta, kwargs['device']).detach()
     cal_scores = 1 / lps.reshape(-1).cpu().exp().numpy()
 
@@ -90,7 +91,7 @@ def volume_trial(encoder, kwargs, total_trials=5, trial_sims=1):
         fresh_theta, fresh_x = generate_data_emulator(trial_sims, return_theta=True, **kwargs)
         mc_eff = lebesgue(cal_scores, fresh_theta, fresh_x, alpha, **kwargs)
         mc_effs.append(mc_eff)
-    print(f"mc_effs: {np.mean(mc_effs)} ({np.std(mc_effs)})")
+    print(f"mc_effs: {Decimal(np.mean(mc_effs)):.4E} ({Decimal(np.std(mc_effs)):.4E})")
     return pd.DataFrame(np.vstack([mc_effs]).T, columns=["Estimate"])
 
 @hydra.main(version_base=None, config_path=".", config_name="config")
