@@ -1,8 +1,0 @@
----
-miniconda_dir: "{{ ansible_env.HOME }}/miniconda"
-miniconda_bin: "{{ miniconda_dir }}/bin"
-miniconda_conda: "{{ miniconda_bin }}/conda"
-miniconda_path_append: true
-miniconda_path_append_file: "{{ansible_env.HOME}}/.profile"
-miniconda_conda_sh_append: true
-miniconda_conda_sh_append_file: "{{ansible_env.HOME}}/.profile"

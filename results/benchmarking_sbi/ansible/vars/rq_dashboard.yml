@@ -1,8 +1,0 @@
----
-rq_dashboard_environment: "rqd"
-rq_dashboard_repo_path: "{{ansible_env.HOME}}/{{ rq_dashboard_environment }}"
-rq_dashboard_username: sbibm
-rq_dashboard_password: "{{ redis_password }}"
-rq_dashboard_redis_url: "redis://:{{ redis_password }}@0.0.0.0:{{ redis_port }}/{{ redis_db }}"
-rq_dashboard_version: master
-rq_dashboard_python_version: "3.7.7"

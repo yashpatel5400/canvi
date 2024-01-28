@@ -1,7 +1,0 @@
----
-rq_workers_bin: "{{ miniconda_dir }}/envs/{{ sbibm_environment }}/bin"
-rq_workers_redis_url: "redis://:{{ redis_password }}@{{ redis_host }}:{{ redis_port }}/{{ redis_db }}"
-rq_workers_queue: "highest high medium low lowest"
-rq_workers_launch_template: "rq_workers_launch.sh.j2"
-rq_workers_supervisord_template: "rq_workers_supervisord.conf.j2"
-rq_workers_requirements_url: "https://raw.githubusercontent.com/sbi-benchmark/results/main/benchmarking_sbi/requirements.txt"

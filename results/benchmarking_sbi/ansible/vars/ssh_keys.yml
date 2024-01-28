@@ -1,3 +1,0 @@
----
-ssh_keys_id_rsa: "~/.ssh/id_rsa"
-ssh_keys_id_rsa_pub: "~/.ssh/id_rsa.pub"

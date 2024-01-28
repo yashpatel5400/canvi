@@ -1,4 +1,0 @@
----
-- name: Julia install
-  include_role:
-    name: julia

@@ -1,8 +1,0 @@
----
-aws_efs_region: "{{ lookup('env', 'AWS_REGION') }}"
-aws_efs_id: "fs-c6423744"
-aws_efs_name_tag: "sbibm"
-aws_efs_path: "/home/ubuntu/results"
-aws_efs_owner: "ubuntu"
-aws_efs_group: "ubuntu"
-aws_efs_permissions: 0777

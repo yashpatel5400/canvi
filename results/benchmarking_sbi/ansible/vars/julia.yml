@@ -1,5 +1,0 @@
----
-julia_dir: "{{ ansible_env.HOME }}/julia"
-julia_symlink: false
-julia_path_append: true
-julia_path_append_file: "{{ansible_env.HOME}}/.profile"
