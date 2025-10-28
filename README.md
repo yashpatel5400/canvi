@@ -1,7 +1,7 @@
 <h1 align='center'>Variational Inference with Coverage Guarantees in Simulation-Based Inference</h1>
 
 <div align='center'>
-    <a href='https://eochoarv.github.io/' target='_blank'>Eduardo Ochoa Rivera</a><sup>1</sup>&emsp;
+    <a href='https://yashpatel5400.github.io/' target='_blank'>Yash Patel</a><sup>1</sup>&emsp;
     <a href='https://declanmcnamara.github.io/website/' target='_blank'>Declan McNamara</a>&emsp;;
     <a href='https://jacksonloper.name/' target='_blank'>Jackson Loper</a>&emsp;;
     <a href='https://sites.lsa.umich.edu/regier/' target='_blank'>Jeffrey Regier</a><sup>2</sup>&emsp;
